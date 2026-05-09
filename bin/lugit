@@ -404,7 +404,7 @@ class Cli {
         
         // Show git clone URL
         if (isset($repo['name'])) {
-            echo "\n📦 Git URL: " . self::$serverUrl . "/" . $repo['name'] . ".git\n";
+            echo "\n📦 Git URL: " . self::$serverUrl . "/" . $repo['name'] . "\n";
         }
     }
 
