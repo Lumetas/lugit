@@ -548,9 +548,10 @@ HOOK;
 			mkdir($logDir, 0755, true);
 		}
 
-		$cmd = "echo \"=== $(date) === Manual run on $branch ===\" >> " . escapeshellarg($logFile)
-			. " && nohup " . escapeshellarg($hookFile) . " >> " . escapeshellarg($logFile) . " 2>&1 &";
+		$logEntry = "=== " . date('c') . " === Manual run on $branch ===\n";
+		@file_put_contents($logFile, $logEntry, FILE_APPEND);
 
+		$cmd = "nohup " . escapeshellarg($hookFile) . " >> " . escapeshellarg($logFile) . " 2>&1 &";
 		exec($cmd);
 
 		$this->sendJson(['message' => "CI/CD hook triggered manually for branch '$branch'"]);
