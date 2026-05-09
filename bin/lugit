@@ -87,7 +87,8 @@ class Cli
 			'set-private' => ['PUT', '/repos/{name}/private', 'name', 'Make repository private'],
 			'cicd-list' => ['GET', '/repos/{name}/cicd', 'name', 'List CI/CD hooks for repository'],
 			'cicd-del' => ['DELETE', '/repos/{name}/cicd/{branch}', ['name', 'branch'], 'Delete CI/CD hook'],
-			'cicd-logs' => ['GET', '/repos/{name}/cicd/logs', 'name', 'Show CI/CD logs for repository'],
+			'cicd-logs' => ['GET', '/repos/{name}/cicd/logs/{branch}', ['name', 'branch'], 'Show CI/CD logs for a branch'],
+			'cicd-logs-clean' => ['DELETE', '/repos/{name}/cicd/logs/{branch}', ['name', 'branch'], 'Clear CI/CD logs for a branch'],
 			'cicd-run' => ['POST', '/repos/{name}/cicd/{branch}/run', ['name', 'branch'], 'Manually run CI/CD hook'],
 		];
 
@@ -415,6 +416,9 @@ class Cli
 			case 'cicd-logs':
 				self::formatCicdLogs($data);
 				break;
+			case 'cicd-logs-clean':
+				self::printSuccess("CI/CD logs cleared successfully");
+				break;
 			case 'cicd-del':
 				self::printSuccess("CI/CD hook deleted successfully");
 				break;
@@ -580,7 +584,8 @@ class Cli
     cicd-del <repo> <branch>             Delete a CI/CD hook
     cicd-list <repo>                     List installed CI/CD hooks
     cicd-run <repo> <branch>             Manually trigger a CI/CD hook
-    cicd-logs <repo>                     Show CI/CD logs for repository
+    cicd-logs <repo> <branch>            Show CI/CD logs for a branch
+    cicd-logs-clean <repo> <branch>      Clear CI/CD logs for a branch
 
 \033[33mOther Commands:\033[0m
     help [command]                         Show help for a command
@@ -634,7 +639,9 @@ HELP;
 
 			'cicd-list' => "\033[33mList CI/CD hooks\033[0m\n\nUsage: lugit cicd-list <repo>\n\nLists all installed CI/CD hooks for a repository.\n\nArguments:\n  repo      Repository name\n\nExample:\n  lugit cicd-list my-project",
 
-			'cicd-logs' => "\033[33mShow CI/CD logs\033[0m\n\nUsage: lugit cicd-logs <repo>\n\nDisplays the execution logs for all CI/CD hooks in a repository.\n\nArguments:\n  repo      Repository name\n\nExample:\n  lugit cicd-logs my-project",
+			'cicd-logs' => "\033[33mShow CI/CD logs\033[0m\n\nUsage: lugit cicd-logs <repo> <branch>\n\nDisplays the execution logs for a specific branch.\n\nArguments:\n  repo      Repository name\n  branch    Branch name\n\nExample:\n  lugit cicd-logs my-project main",
+
+			'cicd-logs-clean' => "\033[33mClear CI/CD logs\033[0m\n\nUsage: lugit cicd-logs-clean <repo> <branch>\n\nClears the execution logs for a specific branch.\n\nArguments:\n  repo      Repository name\n  branch    Branch name\n\nExample:\n  lugit cicd-logs-clean my-project main",
 
 			'cicd-run' => "\033[33mRun CI/CD hook manually\033[0m\n\nUsage: lugit cicd-run <repo> <branch>\n\nTriggers a CI/CD hook manually without pushing to the branch.\n\nArguments:\n  repo      Repository name\n  branch    Branch name\n\nExample:\n  lugit cicd-run my-project main",
 		];

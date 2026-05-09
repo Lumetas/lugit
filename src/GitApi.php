@@ -68,11 +68,14 @@ class GitApi
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
-		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/cicd/logs/?$#', $path, $matches)) {
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/cicd/logs/([^/]+)/?$#', $path, $matches)) {
 			$this->authenticate();
 			$repoName = $matches[1];
+			$branch = urldecode($matches[2]);
 			if ($method === 'GET') {
-				$this->cicdGetLogs($repoName);
+				$this->cicdGetLogs($repoName, $branch);
+			} elseif ($method === 'DELETE') {
+				$this->cicdCleanLogs($repoName, $branch);
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
@@ -507,24 +510,40 @@ HOOK;
 		$this->sendJson(['message' => "CI/CD hook removed for branch '$branch'"]);
 	}
 
-	private function cicdGetLogs(string $repoName): void
+	private function cicdGetLogs(string $repoName, string $branch): void
 	{
 		$this->checkRepoAccess($repoName);
-
-		$repoPath = $this->basePath . '/' . $repoName;
-		$logsDir = $repoPath . '/lugit/logs';
-
-		$logs = [];
-		if (is_dir($logsDir)) {
-			$files = scandir($logsDir);
-			foreach ($files as $file) {
-				if ($file === '.' || $file === '..') continue;
-				$logPath = $logsDir . '/' . $file;
-				$logs[$file] = file_get_contents($logPath);
-			}
+		if (str_contains($branch, '..')) {
+			$this->sendError(400, "Invalid branch name");
 		}
 
-		$this->sendJson(['logs' => $logs]);
+		$repoPath = $this->basePath . '/' . $repoName;
+		$logFile = $repoPath . '/lugit/logs/' . $branch;
+
+		$content = '';
+		if (file_exists($logFile)) {
+			$content = file_get_contents($logFile);
+		}
+
+		$this->sendJson(['logs' => [$branch => $content]]);
+	}
+
+	private function cicdCleanLogs(string $repoName, string $branch): void
+	{
+		$this->checkRepoAccess($repoName);
+		if (str_contains($branch, '..')) {
+			$this->sendError(400, "Invalid branch name");
+		}
+
+		$repoPath = $this->basePath . '/' . $repoName;
+		$logFile = $repoPath . '/lugit/logs/' . $branch;
+
+		if (!file_exists($logFile)) {
+			$this->sendError(404, "Logs not found for branch '$branch'");
+		}
+
+		unlink($logFile);
+		$this->sendJson(['message' => "Logs cleared for branch '$branch'"]);
 	}
 
 	private function cicdRunHook(string $repoName, string $branch): void
