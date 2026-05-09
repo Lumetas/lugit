@@ -3,448 +3,466 @@
 
 namespace Lugit;
 
-class Cli {
-    private static string $apiUrl = '';
-    private static string $serverUrl = '';
-    private static array $args = [];
-    private static int $argIndex = 0;
-    private static ?string $authFile = null;
-    private static ?array $credentials = null;
+class Cli
+{
+	private static string $apiUrl = '';
+	private static string $serverUrl = '';
+	private static array $args = [];
+	private static int $argIndex = 0;
+	private static ?string $authFile = null;
+	private static ?array $credentials = null;
 
-    public static function run(array $argv): void {
-        self::$authFile = getenv('HOME') . '/.lugit.json';
-        self::loadCredentials();
-        
-        if (!isset($argv[1])) {
-            self::printHelp();
-            return;
-        }
+	public static function run(array $argv): void
+	{
+		self::$authFile = getenv('HOME') . '/.lugit.json';
+		self::loadCredentials();
 
-        $command = $argv[1];
-        self::$args = array_slice($argv, 2);
-        self::$argIndex = 0;
+		if (!isset($argv[1])) {
+			self::printHelp();
+			return;
+		}
 
-        // Help commands
-        if ($command === 'help' || $command === '--help' || $command === '-h') {
-            if (isset(self::$args[0])) {
-                self::printCommandHelp(self::$args[0]);
-            } else {
-                self::printHelp();
-            }
-            return;
-        }
+		$command = $argv[1];
+		self::$args = array_slice($argv, 2);
+		self::$argIndex = 0;
 
-        // Auth commands (don't require authentication)
-        if ($command === 'register') {
-            self::cmdRegister();
-            return;
-        }
+		// Help commands
+		if ($command === 'help' || $command === '--help' || $command === '-h') {
+			if (isset(self::$args[0])) {
+				self::printCommandHelp(self::$args[0]);
+			} else {
+				self::printHelp();
+			}
+			return;
+		}
 
-        if ($command === 'login') {
-            self::cmdLogin();
-            return;
-        }
+		// Auth commands (don't require authentication)
+		if ($command === 'register') {
+			self::cmdRegister();
+			return;
+		}
 
-        if ($command === 'logout') {
-            self::cmdLogout();
-            return;
-        }
+		if ($command === 'login') {
+			self::cmdLogin();
+			return;
+		}
 
-        if ($command === 'whoami') {
-            self::cmdWhoami();
-            return;
-        }
+		if ($command === 'logout') {
+			self::cmdLogout();
+			return;
+		}
 
-        if ($command === 'set-server') {
-            self::cmdSetServer();
-            return;
-        }
+		if ($command === 'whoami') {
+			self::cmdWhoami();
+			return;
+		}
 
-        // Commands that require authentication
-        if (!self::isAuthenticated()) {
-            self::printError("Not authenticated. Run 'lugit login <server-url> <username> <password>' first.");
-            exit(1);
-        }
+		if ($command === 'set-server') {
+			self::cmdSetServer();
+			return;
+		}
 
-        // Dispatch commands
-        $handlers = [
-            'list' => ['GET', '/repos', null, 'List all repositories'],
-            'info' => ['GET', '/repos/{name}', 'name', 'Show repository information'],
-            'create' => ['POST', '/repos/{name}', 'name', 'Create a new bare repository'],
-            'delete' => ['DELETE', '/repos/{name}', 'name', 'Delete a repository'],
-            'user-add' => ['POST', '/repos/{name}/users/{username}', ['name', 'username'], 'Add user access to repository'],
-            'user-remove' => ['DELETE', '/repos/{name}/users/{username}', ['name', 'username'], 'Remove user access from repository'],
-            'user-list' => ['GET', '/repos/{name}/users', 'name', 'List users with repository access'],
-            'set-public' => ['PUT', '/repos/{name}/public', 'name', 'Make repository public'],
-            'set-private' => ['PUT', '/repos/{name}/private', 'name', 'Make repository private'],
-        ];
+		// Commands that require authentication
+		if (!self::isAuthenticated()) {
+			self::printError("Not authenticated. Run 'lugit login <server-url> <username> <password>' first.");
+			exit(1);
+		}
 
-        if (!isset($handlers[$command])) {
-            self::printError("Unknown command: $command\nRun 'lugit help' for usage information.");
-            exit(1);
-        }
+		// Dispatch commands
+		$handlers = [
+			'list' => ['GET', '/repos', null, 'List all repositories'],
+			'info' => ['GET', '/repos/{name}', 'name', 'Show repository information'],
+			'create' => ['POST', '/repos/{name}', 'name', 'Create a new bare repository'],
+			'delete' => ['DELETE', '/repos/{name}', 'name', 'Delete a repository'],
+			'user-add' => ['POST', '/repos/{name}/users/{username}', ['name', 'username'], 'Add user access to repository'],
+			'user-remove' => ['DELETE', '/repos/{name}/users/{username}', ['name', 'username'], 'Remove user access from repository'],
+			'user-list' => ['GET', '/repos/{name}/users', 'name', 'List users with repository access'],
+			'set-public' => ['PUT', '/repos/{name}/public', 'name', 'Make repository public'],
+			'set-private' => ['PUT', '/repos/{name}/private', 'name', 'Make repository private'],
+		];
 
-        try {
-            [$method, $pathTemplate, $params, $description] = $handlers[$command];
-            
-            // Parse parameters
-            $path = $pathTemplate;
-            $data = null;
-            
-            if (is_string($params)) {
-                $value = self::argOrFail($params);
-                $path = str_replace('{' . $params . '}', urlencode($value), $path);
-            } elseif (is_array($params)) {
-                foreach ($params as $param) {
-                    $value = self::argOrFail($param);
-                    $path = str_replace('{' . $param . '}', urlencode($value), $path);
-                }
-            }
-            
-            // Make request and format output
-            $response = self::request($method, $path, $data);
-            
-            // Format output based on command
-            self::formatOutput($command, $response);
-            
-        } catch (\Throwable $e) {
-            self::printError($e->getMessage());
-            exit(1);
-        }
-    }
+		if (!isset($handlers[$command])) {
+			self::printError("Unknown command: $command\nRun 'lugit help' for usage information.");
+			exit(1);
+		}
 
-    private static function loadCredentials(): void {
-        if (file_exists(self::$authFile)) {
-            $data = json_decode(file_get_contents(self::$authFile), true);
-            if ($data && isset($data['username'], $data['password'], $data['server'])) {
-                self::$credentials = $data;
-                self::$serverUrl = rtrim($data['server'], '/');
-                self::$apiUrl = self::$serverUrl . '/api/v1';
-            }
-        }
-    }
+		try {
+			[$method, $pathTemplate, $params, $description] = $handlers[$command];
 
-    private static function saveCredentials(): void {
-        file_put_contents(self::$authFile, json_encode(self::$credentials, JSON_PRETTY_PRINT));
-        chmod(self::$authFile, 0600); // Secure the file
-    }
+			// Parse parameters
+			$path = $pathTemplate;
+			$data = null;
 
-    private static function isAuthenticated(): bool {
-        if (self::$credentials === null || empty(self::$apiUrl)) {
-            return false;
-        }
-        
-        try {
-            $response = self::request('GET', '/user');
-            return isset($response['username']);
-        } catch (\Throwable $e) {
-            return false;
-        }
-    }
+			if (is_string($params)) {
+				$value = self::argOrFail($params);
+				$path = str_replace('{' . $params . '}', urlencode($value), $path);
+			} elseif (is_array($params)) {
+				foreach ($params as $param) {
+					$value = self::argOrFail($param);
+					$path = str_replace('{' . $param . '}', urlencode($value), $path);
+				}
+			}
 
-    private static function request(string $method, string $path, ?array $data = null): array {
-        if (empty(self::$apiUrl)) {
-            throw new \RuntimeException("Server URL not configured. Run 'lugit set-server <url>' first.");
-        }
-        
-        $url = self::$apiUrl . $path;
-        
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        
-        // Add authentication if available
-        if (self::$credentials !== null && isset(self::$credentials['username'], self::$credentials['password'])) {
-            curl_setopt($ch, CURLOPT_USERPWD, self::$credentials['username'] . ':' . self::$credentials['password']);
-            curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-        }
-        
-        // Set custom method and body
-        if ($method !== 'GET') {
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-            if ($data !== null) {
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            }
-        }
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-        
-        if ($curlError) {
-            throw new \RuntimeException("Connection error: $curlError");
-        }
-        
-        if ($httpCode === 401) {
-            throw new \RuntimeException("Authentication failed. Please login again.");
-        }
-        
-        if ($httpCode >= 400) {
-            $result = json_decode($response, true);
-            $errorMsg = $result['error'] ?? $result['message'] ?? "HTTP $httpCode";
-            throw new \RuntimeException($errorMsg);
-        }
-        
-        $result = json_decode($response, true);
-        if ($result === null && $response !== '') {
-            throw new \RuntimeException("Invalid JSON response from server");
-        }
-        
-        return $result ?? [];
-    }
+			// Make request and format output
+			$response = self::request($method, $path, $data);
 
-    private static function arg(): ?string {
-        if (self::$argIndex >= count(self::$args)) {
-            return null;
-        }
-        return self::$args[self::$argIndex++] ?? null;
-    }
+			// Format output based on command
+			self::formatOutput($command, $response);
+		} catch (\Throwable $e) {
+			self::printError($e->getMessage());
+			exit(1);
+		}
+	}
 
-    private static function argOrFail(string $name): string {
-        $arg = self::arg();
-        if ($arg === null) {
-            self::printError("Missing required argument: $name");
-            exit(1);
-        }
-        return $arg;
-    }
+	private static function loadCredentials(): void
+	{
+		if (file_exists(self::$authFile)) {
+			$data = json_decode(file_get_contents(self::$authFile), true);
+			if ($data && isset($data['username'], $data['password'], $data['server'])) {
+				self::$credentials = $data;
+				self::$serverUrl = rtrim($data['server'], '/');
+				self::$apiUrl = self::$serverUrl . '/api/v1';
+			}
+		}
+	}
 
-    private static function cmdRegister(): void {
-        $serverUrl = self::argOrFail('server-url');
-        $username = self::argOrFail('username');
-        $password = self::argOrFail('password');
-        
-        if (!filter_var($serverUrl, FILTER_VALIDATE_URL)) {
-            self::printError("Invalid server URL format");
-            exit(1);
-        }
-        
-        $serverUrl = rtrim($serverUrl, '/');
-        $apiUrl = $serverUrl . '/api/v1';
-        
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $apiUrl . '/register');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-            'username' => $username,
-            'password' => $password
-        ]));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        
-        if ($httpCode === 201 || $httpCode === 200) {
-            self::printSuccess("User registered successfully!");
-			
+	private static function saveCredentials(): void
+	{
+		file_put_contents(self::$authFile, json_encode(self::$credentials, JSON_PRETTY_PRINT));
+		chmod(self::$authFile, 0600); // Secure the file
+	}
+
+	private static function isAuthenticated(): bool
+	{
+		if (self::$credentials === null || empty(self::$apiUrl)) {
+			return false;
+		}
+
+		try {
+			$response = self::request('GET', '/user');
+			return isset($response['username']);
+		} catch (\Throwable $e) {
+			return false;
+		}
+	}
+
+	private static function request(string $method, string $path, ?array $data = null): array
+	{
+		if (empty(self::$apiUrl)) {
+			throw new \RuntimeException("Server URL not configured. Run 'lugit set-server <url>' first.");
+		}
+
+		$url = self::$apiUrl . $path;
+
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, $url);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+
+		// Add authentication if available
+		if (self::$credentials !== null && isset(self::$credentials['username'], self::$credentials['password'])) {
+			curl_setopt($ch, CURLOPT_USERPWD, self::$credentials['username'] . ':' . self::$credentials['password']);
+			curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+		}
+
+		// Set custom method and body
+		if ($method !== 'GET') {
+			curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+			if ($data !== null) {
+				curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+				curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+			}
+		}
+
+		$response = curl_exec($ch);
+		$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		$curlError = curl_error($ch);
+		curl_close($ch);
+
+		if ($curlError) {
+			throw new \RuntimeException("Connection error: $curlError");
+		}
+
+		if ($httpCode === 401) {
+			throw new \RuntimeException("Authentication failed. Please login again.");
+		}
+
+		if ($httpCode >= 400) {
+			$result = json_decode($response, true);
+			$errorMsg = $result['error'] ?? $result['message'] ?? "HTTP $httpCode";
+			throw new \RuntimeException($errorMsg);
+		}
+
+		$result = json_decode($response, true);
+		if ($result === null && $response !== '') {
+			throw new \RuntimeException("Invalid JSON response from server");
+		}
+
+		return $result ?? [];
+	}
+
+	private static function arg(): ?string
+	{
+		if (self::$argIndex >= count(self::$args)) {
+			return null;
+		}
+		return self::$args[self::$argIndex++] ?? null;
+	}
+
+	private static function argOrFail(string $name): string
+	{
+		$arg = self::arg();
+		if ($arg === null) {
+			self::printError("Missing required argument: $name");
+			exit(1);
+		}
+		return $arg;
+	}
+
+	private static function cmdRegister(): void
+	{
+		$serverUrl = self::argOrFail('server-url');
+		$username = self::argOrFail('username');
+		$password = self::argOrFail('password');
+
+		if (!filter_var($serverUrl, FILTER_VALIDATE_URL)) {
+			self::printError("Invalid server URL format");
+			exit(1);
+		}
+
+		$serverUrl = rtrim($serverUrl, '/');
+		$apiUrl = $serverUrl . '/api/v1';
+
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, $apiUrl . '/register');
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_POST, true);
+		curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+			'username' => $username,
+			'password' => $password
+		]));
+		curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+
+		$response = curl_exec($ch);
+		$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		curl_close($ch);
+
+		if ($httpCode === 201 || $httpCode === 200) {
+			self::printSuccess("User registered successfully!");
+
 			self::$credentials = [
 				'server' => self::$serverUrl,
 				'username' => $username,
 				'password' => $password
 			];
 			self::saveCredentials();
+		} elseif ($httpCode === 409) {
+			self::printError("User already exists");
+		} else {
+			$result = json_decode($response, true);
+			$error = $result['error'] ?? "Registration failed (HTTP $httpCode)";
+			self::printError($error);
+		}
+	}
 
-        } elseif ($httpCode === 409) {
-            self::printError("User already exists");
-        } else {
-            $result = json_decode($response, true);
-            $error = $result['error'] ?? "Registration failed (HTTP $httpCode)";
-            self::printError($error);
-        }
-    }
+	private static function cmdLogin(): void
+	{
+		$serverUrl = self::argOrFail('server-url');
+		$username = self::argOrFail('username');
+		$password = self::argOrFail('password');
 
-    private static function cmdLogin(): void {
-        $serverUrl = self::argOrFail('server-url');
-        $username = self::argOrFail('username');
-        $password = self::argOrFail('password');
-        
-        if (!filter_var($serverUrl, FILTER_VALIDATE_URL)) {
-            self::printError("Invalid server URL format");
-            exit(1);
-        }
-        
-        self::$serverUrl = rtrim($serverUrl, '/');
-        self::$apiUrl = self::$serverUrl . '/api/v1';
-        self::$credentials = [
-            'server' => self::$serverUrl,
-            'username' => $username,
-            'password' => $password
-        ];
-        
-        try {
-            $response = self::request('GET', '/user');
-            self::saveCredentials();
-            self::printSuccess("Logged in as: {$response['username']}");
-            echo "Server: " . self::$serverUrl . "\n";
-        } catch (\Throwable $e) {
-            self::$credentials = null;
-            self::printError("Login failed: " . $e->getMessage());
-            exit(1);
-        }
-    }
+		if (!filter_var($serverUrl, FILTER_VALIDATE_URL)) {
+			self::printError("Invalid server URL format");
+			exit(1);
+		}
 
-    private static function cmdLogout(): void {
-        if (file_exists(self::$authFile)) {
-            unlink(self::$authFile);
-        }
-        self::$credentials = null;
-        self::$apiUrl = '';
-        self::$serverUrl = '';
-        self::printSuccess("Logged out successfully");
-    }
+		self::$serverUrl = rtrim($serverUrl, '/');
+		self::$apiUrl = self::$serverUrl . '/api/v1';
+		self::$credentials = [
+			'server' => self::$serverUrl,
+			'username' => $username,
+			'password' => $password
+		];
 
-    private static function cmdWhoami(): void {
-        if (!self::isAuthenticated()) {
-            echo "Not logged in\n";
-            return;
-        }
-        
-        try {
-            $response = self::request('GET', '/user');
-            echo "\n";
-            echo "┌─────────────────────────────────────────\n";
-            echo "│ Username: " . $response['username'] . "\n";
-            echo "│ Server:   " . self::$serverUrl . "\n";
-            echo "└─────────────────────────────────────────\n";
-        } catch (\Throwable $e) {
-            echo "Not logged in or connection failed\n";
-        }
-    }
+		try {
+			$response = self::request('GET', '/user');
+			self::saveCredentials();
+			self::printSuccess("Logged in as: {$response['username']}");
+			echo "Server: " . self::$serverUrl . "\n";
+		} catch (\Throwable $e) {
+			self::$credentials = null;
+			self::printError("Login failed: " . $e->getMessage());
+			exit(1);
+		}
+	}
 
-    private static function cmdSetServer(): void {
-        $url = self::argOrFail('server-url');
-        
-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
-            self::printError("Invalid URL");
-            exit(1);
-        }
-        
-        self::$serverUrl = rtrim($url, '/');
-        self::$apiUrl = self::$serverUrl . '/api/v1';
-        
-        if (self::$credentials !== null) {
-            self::$credentials['server'] = self::$serverUrl;
-            self::saveCredentials();
-        }
-        
-        self::printSuccess("Server URL set to: " . self::$serverUrl);
-    }
+	private static function cmdLogout(): void
+	{
+		if (file_exists(self::$authFile)) {
+			unlink(self::$authFile);
+		}
+		self::$credentials = null;
+		self::$apiUrl = '';
+		self::$serverUrl = '';
+		self::printSuccess("Logged out successfully");
+	}
 
-    private static function formatOutput(string $command, array $data): void {
-        switch ($command) {
-            case 'list':
-                self::formatRepoList($data);
-                break;
-            case 'info':
-                self::formatRepoInfo($data);
-                break;
-            case 'user-list':
-                self::formatUserList($data);
-                break;
-            case 'create':
-                self::printSuccess("Repository created successfully!");
-                self::formatRepoInfo($data);
-                break;
-            case 'delete':
-                self::printSuccess("Repository deleted successfully");
-                break;
-            case 'user-add':
-                self::printSuccess("User added successfully");
-                break;
-            case 'user-remove':
-                self::printSuccess("User removed successfully");
-                break;
-            case 'set-public':
-                self::printSuccess("Repository is now public");
-                break;
-            case 'set-private':
-                self::printSuccess("Repository is now private");
-                break;
-            default:
-                echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
-        }
-    }
+	private static function cmdWhoami(): void
+	{
+		if (!self::isAuthenticated()) {
+			echo "Not logged in\n";
+			return;
+		}
 
-    private static function formatRepoList(array $repos): void {
-        if (empty($repos)) {
-            echo "No repositories found.\n";
-            return;
-        }
-        
-        echo "\n";
-        echo sprintf("┌%s┬%s┐\n", str_repeat('─', 30), str_repeat('─', 12));
-        echo sprintf("│ %-28s │ %-10s │\n", "Repository Name", "Visibility");
-        echo sprintf("├%s┼%s┤\n", str_repeat('─', 30), str_repeat('─', 12));
-        
-        foreach ($repos as $repo) {
-            $name = substr($repo['name'] ?? 'Unknown', 0, 28);
-            $visibility = ($repo['public'] ?? false) ? 'public' : 'private';
-            echo sprintf("│ %-28s │ %-10s │\n", $name, $visibility);
-        }
-        
-        echo sprintf("└%s┴%s┘\n", str_repeat('─', 30), str_repeat('─', 12));
-        echo sprintf("\nTotal: %d repositories\n", count($repos));
-    }
+		try {
+			$response = self::request('GET', '/user');
+			echo "\n";
+			echo "┌─────────────────────────────────────────\n";
+			echo "│ Username: " . $response['username'] . "\n";
+			echo "│ Server:   " . self::$serverUrl . "\n";
+			echo "└─────────────────────────────────────────\n";
+		} catch (\Throwable $e) {
+			echo "Not logged in or connection failed\n";
+		}
+	}
 
-    private static function formatRepoInfo(array $repo): void {
-        echo "\n";
-        echo "╔══════════════════════════════════════════╗\n";
-        echo "║ Repository Information                   ║\n";
-        echo "╠══════════════════════════════════════════╣\n";
-        echo "║ Name:      " . str_pad($repo['name'] ?? 'Unknown', 29) . "║\n";
-        echo "║ Visibility: " . str_pad(($repo['public'] ?? false) ? 'public' : 'private', 29) . "║\n";
-        
-        if (isset($repo['users']) && is_array($repo['users'])) {
-            echo "╠══════════════════════════════════════════╣\n";
-            echo "║ Users with access:                       ║\n";
-            foreach ($repo['users'] as $user) {
-                echo "║   • " . str_pad($user, 33) . "║\n";
-            }
-        }
-        
-        echo "╚══════════════════════════════════════════╝\n";
-        
-        // Show git clone URL
-        if (isset($repo['name'])) {
-            echo "\n📦 Git URL: " . self::$serverUrl . "/" . $repo['name'] . "\n";
-        }
-    }
+	private static function cmdSetServer(): void
+	{
+		$url = self::argOrFail('server-url');
 
-    private static function formatUserList(array $users): void {
-        if (empty($users)) {
-            echo "No users have access to this repository.\n";
-            return;
-        }
-        
-        echo "\n";
-        echo "┌─────────────────────────────────────────┐\n";
-        echo "│ Users with repository access            │\n";
-        echo "├─────────────────────────────────────────┤\n";
-        
-        foreach ($users as $user) {
-            $userName = is_array($user) ? ($user['username'] ?? 'Unknown') : $user;
-            echo "│ • " . str_pad($userName, 37) . "│\n";
-        }
-        
-        echo "└─────────────────────────────────────────┘\n";
-        echo sprintf("\nTotal: %d users\n", count($users));
-    }
+		if (!filter_var($url, FILTER_VALIDATE_URL)) {
+			self::printError("Invalid URL");
+			exit(1);
+		}
 
-    private static function printSuccess(string $message): void {
-        echo "\033[32m✓ " . $message . "\033[0m\n";
-    }
+		self::$serverUrl = rtrim($url, '/');
+		self::$apiUrl = self::$serverUrl . '/api/v1';
 
-    private static function printError(string $message): void {
-        fwrite(STDERR, "\033[31m✗ Error: " . $message . "\033[0m\n");
-    }
+		if (self::$credentials !== null) {
+			self::$credentials['server'] = self::$serverUrl;
+			self::saveCredentials();
+		}
 
-    private static function printHelp(): void {
-        echo <<<HELP
+		self::printSuccess("Server URL set to: " . self::$serverUrl);
+	}
+
+	private static function formatOutput(string $command, array $data): void
+	{
+		switch ($command) {
+			case 'list':
+				self::formatRepoList($data);
+				break;
+			case 'info':
+				self::formatRepoInfo($data);
+				break;
+			case 'user-list':
+				self::formatUserList($data);
+				break;
+			case 'create':
+				self::printSuccess("Repository created successfully!");
+				self::formatRepoInfo($data);
+				break;
+			case 'delete':
+				self::printSuccess("Repository deleted successfully");
+				break;
+			case 'user-add':
+				self::printSuccess("User added successfully");
+				break;
+			case 'user-remove':
+				self::printSuccess("User removed successfully");
+				break;
+			case 'set-public':
+				self::printSuccess("Repository is now public");
+				break;
+			case 'set-private':
+				self::printSuccess("Repository is now private");
+				break;
+			default:
+				echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+		}
+	}
+
+	private static function formatRepoList(array $repos): void
+	{
+		if (empty($repos)) {
+			echo "No repositories found.\n";
+			return;
+		}
+
+		echo "\n";
+		echo sprintf("┌%s┬%s┐\n", str_repeat('─', 30), str_repeat('─', 12));
+		echo sprintf("│ %-28s │ %-10s │\n", "Repository Name", "Visibility");
+		echo sprintf("├%s┼%s┤\n", str_repeat('─', 30), str_repeat('─', 12));
+
+		foreach ($repos as $repo) {
+			$name = substr($repo['name'] ?? 'Unknown', 0, 28);
+			$visibility = ($repo['public'] ?? false) ? 'public' : 'private';
+			echo sprintf("│ %-28s │ %-10s │\n", $name, $visibility);
+		}
+
+		echo sprintf("└%s┴%s┘\n", str_repeat('─', 30), str_repeat('─', 12));
+		echo sprintf("\nTotal: %d repositories\n", count($repos));
+	}
+
+	private static function formatRepoInfo(array $repo): void
+	{
+		echo "\n";
+		echo "╔══════════════════════════════════════════╗\n";
+		echo "║ Repository Information                   ║\n";
+		echo "╠══════════════════════════════════════════╣\n";
+		echo "║ Name:      " . str_pad($repo['name'] ?? 'Unknown', 29) . "║\n";
+		echo "║ Visibility: " . str_pad(($repo['public'] ?? false) ? 'public' : 'private', 29) . "║\n";
+
+		if (isset($repo['users']) && is_array($repo['users'])) {
+			echo "╠══════════════════════════════════════════╣\n";
+			echo "║ Users with access:                       ║\n";
+			foreach ($repo['users'] as $user) {
+				echo "║   • " . str_pad($user, 33) . "║\n";
+			}
+		}
+
+		echo "╚══════════════════════════════════════════╝\n";
+
+		// Show git clone URL
+		if (isset($repo['name'])) {
+			echo "\n📦 Git URL: " . self::$serverUrl . "/" . $repo['name'] . "\n";
+		}
+	}
+
+	private static function formatUserList(array $users): void
+	{
+		if (empty($users)) {
+			echo "No users have access to this repository.\n";
+			return;
+		}
+
+		echo "\n";
+		echo "┌─────────────────────────────────────────┐\n";
+		echo "│ Users with repository access            │\n";
+		echo "├─────────────────────────────────────────┤\n";
+
+		foreach ($users as $user) {
+			$userName = is_array($user) ? ($user['username'] ?? 'Unknown') : $user;
+			echo "│ • " . str_pad($userName, 37) . "│\n";
+		}
+
+		echo "└─────────────────────────────────────────┘\n";
+		echo sprintf("\nTotal: %d users\n", count($users));
+	}
+
+	private static function printSuccess(string $message): void
+	{
+		echo "\033[32m✓ " . $message . "\033[0m\n";
+	}
+
+	private static function printError(string $message): void
+	{
+		fwrite(STDERR, "\033[31m✗ Error: " . $message . "\033[0m\n");
+	}
+
+	private static function printHelp(): void
+	{
+		echo <<<HELP
 \033[36m
 ╔══════════════════════════════════════════════════════════════╗
 ║                    Lugit - Git HTTP Server CLI              ║
@@ -456,7 +474,7 @@ class Cli {
 
 \033[33mAuthentication Commands:\033[0m
     login <server-url> <user> <pass>       Login to a git server
-	register <server-url> <user> <pass>    Register a new user
+    register <server-url> <user> <pass>    Register a new user
     logout                                 Logout current user
     whoami                                 Show current user and server
     set-server <url>                       Set default server URL
@@ -487,46 +505,47 @@ class Cli {
 \033[90mNote: Credentials are stored securely in ~/.lugit.json\033[0m
 
 HELP;
-    }
+	}
 
-    private static function printCommandHelp(string $command): void {
-        $helps = [
-            'register' => "\033[33mRegister a new user account\033[0m\n\nUsage: lugit register <server-url> <username> <password>\n\nArguments:\n  server-url    Git server URL (e.g., http://localhost:8080)\n  username      Desired username\n  password      Desired password\n\nExample:\n  lugit register http://localhost:8080 alice mypass123",
-            
-            'login' => "\033[33mLogin to a git server\033[0m\n\nUsage: lugit login <server-url> <username> <password>\n\nArguments:\n  server-url    Git server URL\n  username      Your username\n  password      Your password\n\nExample:\n  lugit login http://localhost:8080 alice mypass123",
-            
-            'logout' => "\033[33mLogout\033[0m\n\nUsage: lugit logout\n\nClears stored credentials from ~/.lugit.json",
-            
-            'whoami' => "\033[33mShow current user\033[0m\n\nUsage: lugit whoami\n\nDisplays currently logged in user and server information",
-            
-            'set-server' => "\033[33mSet default server\033[0m\n\nUsage: lugit set-server <url>\n\nArguments:\n  url    Default server URL\n\nExample:\n  lugit set-server http://localhost:8080",
-            
-            'list' => "\033[33mList repositories\033[0m\n\nUsage: lugit list\n\nShows all repositories you have access to in a formatted table",
-            
-            'info' => "\033[33mShow repository info\033[0m\n\nUsage: lugit info <name>\n\nArguments:\n  name    Repository name\n\nExample:\n  lugit info my-project",
-            
-            'create' => "\033[33mCreate repository\033[0m\n\nUsage: lugit create <name>\n\nArguments:\n  name    Repository name\n\nExample:\n  lugit create my-new-project",
-            
-            'delete' => "\033[33mDelete repository\033[0m\n\nUsage: lugit delete <name>\n\n⚠️  This action cannot be undone!\n\nExample:\n  lugit delete old-project",
-            
-            'user-add' => "\033[33mAdd user to repository\033[0m\n\nUsage: lugit user-add <repo-name> <username>\n\nArguments:\n  repo-name    Repository name\n  username     Username to add\n\nExample:\n  lugit user-add my-project bob",
-            
-            'user-remove' => "\033[33mRemove user from repository\033[0m\n\nUsage: lugit user-remove <repo-name> <username>\n\nArguments:\n  repo-name    Repository name\n  username     Username to remove\n\nExample:\n  lugit user-remove my-project bob",
-            
-            'user-list' => "\033[33mList repository users\033[0m\n\nUsage: lugit user-list <repo-name>\n\nArguments:\n  repo-name    Repository name\n\nExample:\n  lugit user-list my-project",
-            
-            'set-public' => "\033[33mMake repository public\033[0m\n\nUsage: lugit set-public <name>\n\nMakes the repository publicly readable without authentication\n\nExample:\n  lugit set-public my-project",
-            
-            'set-private' => "\033[33mMake repository private\033[0m\n\nUsage: lugit set-private <name>\n\nRestricts repository access to authorized users only\n\nExample:\n  lugit set-private my-project",
-        ];
-        
-        if (isset($helps[$command])) {
-            echo $helps[$command] . "\n";
-        } else {
-            self::printError("Unknown command: $command");
-            exit(1);
-        }
-    }
+	private static function printCommandHelp(string $command): void
+	{
+		$helps = [
+			'register' => "\033[33mRegister a new user account\033[0m\n\nUsage: lugit register <server-url> <username> <password>\n\nArguments:\n  server-url    Git server URL (e.g., http://localhost:8080)\n  username      Desired username\n  password      Desired password\n\nExample:\n  lugit register http://localhost:8080 alice mypass123",
+
+			'login' => "\033[33mLogin to a git server\033[0m\n\nUsage: lugit login <server-url> <username> <password>\n\nArguments:\n  server-url    Git server URL\n  username      Your username\n  password      Your password\n\nExample:\n  lugit login http://localhost:8080 alice mypass123",
+
+			'logout' => "\033[33mLogout\033[0m\n\nUsage: lugit logout\n\nClears stored credentials from ~/.lugit.json",
+
+			'whoami' => "\033[33mShow current user\033[0m\n\nUsage: lugit whoami\n\nDisplays currently logged in user and server information",
+
+			'set-server' => "\033[33mSet default server\033[0m\n\nUsage: lugit set-server <url>\n\nArguments:\n  url    Default server URL\n\nExample:\n  lugit set-server http://localhost:8080",
+
+			'list' => "\033[33mList repositories\033[0m\n\nUsage: lugit list\n\nShows all repositories you have access to in a formatted table",
+
+			'info' => "\033[33mShow repository info\033[0m\n\nUsage: lugit info <name>\n\nArguments:\n  name    Repository name\n\nExample:\n  lugit info my-project",
+
+			'create' => "\033[33mCreate repository\033[0m\n\nUsage: lugit create <name>\n\nArguments:\n  name    Repository name\n\nExample:\n  lugit create my-new-project",
+
+			'delete' => "\033[33mDelete repository\033[0m\n\nUsage: lugit delete <name>\n\n⚠️  This action cannot be undone!\n\nExample:\n  lugit delete old-project",
+
+			'user-add' => "\033[33mAdd user to repository\033[0m\n\nUsage: lugit user-add <repo-name> <username>\n\nArguments:\n  repo-name    Repository name\n  username     Username to add\n\nExample:\n  lugit user-add my-project bob",
+
+			'user-remove' => "\033[33mRemove user from repository\033[0m\n\nUsage: lugit user-remove <repo-name> <username>\n\nArguments:\n  repo-name    Repository name\n  username     Username to remove\n\nExample:\n  lugit user-remove my-project bob",
+
+			'user-list' => "\033[33mList repository users\033[0m\n\nUsage: lugit user-list <repo-name>\n\nArguments:\n  repo-name    Repository name\n\nExample:\n  lugit user-list my-project",
+
+			'set-public' => "\033[33mMake repository public\033[0m\n\nUsage: lugit set-public <name>\n\nMakes the repository publicly readable without authentication\n\nExample:\n  lugit set-public my-project",
+
+			'set-private' => "\033[33mMake repository private\033[0m\n\nUsage: lugit set-private <name>\n\nRestricts repository access to authorized users only\n\nExample:\n  lugit set-private my-project",
+		];
+
+		if (isset($helps[$command])) {
+			echo $helps[$command] . "\n";
+		} else {
+			self::printError("Unknown command: $command");
+			exit(1);
+		}
+	}
 }
 
 Cli::run($argv);

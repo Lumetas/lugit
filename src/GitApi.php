@@ -101,9 +101,11 @@ class GitApi
 				[$username, $password] = explode(':', $credentials, 2);
 				$users = Config::getUsers();
 				foreach ($users as $u) {
-					if ($u['username'] === $username && $u['password'] === $password) {
-						$this->currentUser = ['username' => $username];
-						return;
+					if ($u['username'] === $username) {
+						if ($u['password'] === hash('sha256', $password)) {
+							$this->currentUser = ['username' => $username];
+							return;
+						}
 					}
 				}
 			}
