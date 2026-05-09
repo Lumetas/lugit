@@ -1,0 +1,77 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "73d475ccad021de8e8b521484122c92e",
+    "packages": [
+        {
+            "name": "fastvolt/markdown",
+            "version": "v0.2.5",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/fastvolt/markdown.git",
+                "reference": "980a954841806ffcf731ff4c58b527c77ebdfb1e"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/fastvolt/markdown/zipball/980a954841806ffcf731ff4c58b527c77ebdfb1e",
+                "reference": "980a954841806ffcf731ff4c58b527c77ebdfb1e",
+                "shasum": ""
+            },
+            "require": {
+                "ext-dom": "*",
+                "ext-json": "*",
+                "ext-libxml": "*",
+                "ext-mbstring": "*",
+                "ext-tokenizer": "*",
+                "ext-xml": "*",
+                "ext-xmlwriter": "*",
+                "php": "^8.1"
+            },
+            "require-dev": {
+                "friendsofphp/php-cs-fixer": "^3.38",
+                "phpunit/phpunit": "^10.4"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "FastVolt\\Helper\\": "src/",
+                    "FastVolt\\Helper\\Markdown\\": "src/Markdown/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Oladoyinbo Vincent",
+                    "email": "oladoyinboadverts@gmail.com"
+                }
+            ],
+            "description": "A Fast, Simple and Straight-forward Markdown to HTML Converter for PHP.",
+            "keywords": [
+                "markdown",
+                "markdown-library",
+                "markdown-parser",
+                "markdown-to-html"
+            ],
+            "support": {
+                "issues": "https://github.com/fastvolt/markdown/issues",
+                "source": "https://github.com/fastvolt/markdown/tree/v0.2.5"
+            },
+            "time": "2025-11-11T22:50:44+00:00"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {},
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": {},
+    "platform-dev": {},
+    "plugin-api-version": "2.9.0"
+}

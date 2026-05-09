@@ -1,0 +1,355 @@
+#!/usr/bin/env php
+<?php
+
+namespace Lugit;
+
+class Cli {
+    private static string $apiUrl = 'http://localhost:8080/api/v1';
+    private static string $serverUrl = 'http://localhost:8080';
+    private static array $args = [];
+    private static int $argIndex = 0;
+    private static ?string $authFile = null;
+    private static ?array $credentials = null;
+
+    public static function run(array $argv): void {
+        self::$authFile = dirname(__DIR__) . '/.auth';
+        self::loadCredentials();
+        
+        if (!isset($argv[1])) {
+            self::printHelp();
+            return;
+        }
+
+        $command = $argv[1];
+        self::$args = array_slice($argv, 2);
+        self::$argIndex = 0;
+
+        if ($command === 'help' || $command === '--help' || $command === '-h') {
+            if (isset(self::$args[0])) {
+                self::printCommandHelp(self::$args[0]);
+            } else {
+                self::printHelp();
+            }
+            return;
+        }
+
+        if ($command === 'login') {
+            self::cmdLogin();
+            return;
+        }
+
+        if ($command === 'logout') {
+            self::cmdLogout();
+            return;
+        }
+
+        if ($command === 'whoami') {
+            self::cmdWhoami();
+            return;
+        }
+
+        if ($command === 'set-server') {
+            self::cmdSetServer();
+            return;
+        }
+
+        if (!self::isAuthenticated()) {
+            fwrite(STDERR, "Not authenticated. Run 'lugit login' first.\n");
+            exit(1);
+        }
+
+        $handlers = [
+            'list' => ['GET', '/repos', self::class . '::handleList'],
+            'info' => ['GET', '', self::class . '::handleInfo'],
+            'create' => ['POST', '', self::class . '::handleCreate'],
+            'delete' => ['DELETE', '', self::class . '::handleDelete'],
+            'user-add' => ['POST', '', self::class . '::handleUserAdd'],
+            'user-remove' => ['DELETE', '', self::class . '::handleUserRemove'],
+            'user-list' => ['GET', '', self::class . '::handleUserList'],
+            'set-public' => ['PUT', '', self::class . '::handleSetPublic'],
+            'set-private' => ['PUT', '', self::class . '::handleSetPrivate'],
+        ];
+
+        if (!isset($handlers[$command])) {
+            fwrite(STDERR, "Unknown command: $command\n");
+            fwrite(STDERR, "Run 'lugit help' for usage information.\n");
+            exit(1);
+        }
+
+        try {
+            [$method, $path, $handler] = $handlers[$command];
+            $data = forward_static_call($handler, $method, $path);
+            
+            if ($data === null) {
+                exit(1);
+            }
+            
+            if (isset($data['error'])) {
+                fwrite(STDERR, "Error: {$data['error']}\n");
+                exit(1);
+            }
+            
+            echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+        } catch (\Throwable $e) {
+            fwrite(STDERR, "Error: " . $e->getMessage() . "\n");
+            exit(1);
+        }
+    }
+
+    private static function loadCredentials(): void {
+        if (file_exists(self::$authFile)) {
+            $data = json_decode(file_get_contents(self::$authFile), true);
+            if ($data && isset($data['username'], $data['password'])) {
+                self::$credentials = [
+                    'username' => $data['username'],
+                    'password' => $data['password']
+                ];
+                
+                if (isset($data['server'])) {
+                    self::$serverUrl = rtrim($data['server'], '/');
+                    self::$apiUrl = self::$serverUrl . '/api/v1';
+                }
+            }
+        }
+    }
+
+    private static function saveCredentials(): void {
+        $data = [
+            'username' => self::$credentials['username'],
+            'password' => self::$credentials['password'],
+            'server' => self::$serverUrl
+        ];
+        file_put_contents(self::$authFile, json_encode($data));
+    }
+
+    private static function isAuthenticated(): bool {
+        if (self::$credentials === null) {
+            return false;
+        }
+        
+        try {
+            $response = self::request('GET', '/user');
+            return isset($response['username']);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private static function request(string $method, string $path, ?array $data = null, int $expectedCode = 200): array {
+        $url = self::$apiUrl . $path;
+        
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_USERPWD, self::$credentials['username'] . ':' . self::$credentials['password']);
+        curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+        
+        if ($method === 'POST' || $method === 'PUT' || $method === 'DELETE') {
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+            if ($data !== null) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            }
+        }
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($httpCode === 401) {
+            fwrite(STDERR, "Authentication failed. Run 'lugit logout' and 'lugit login' again.\n");
+            exit(1);
+        }
+        
+        if ($httpCode >= 400 && $httpCode !== $expectedCode) {
+            $result = json_decode($response, true);
+            throw new \RuntimeException($result['error'] ?? "HTTP $httpCode");
+        }
+        
+        return json_decode($response, true) ?? [];
+    }
+
+    private static function arg(): ?string {
+        if (self::$argIndex >= count(self::$args)) {
+            return null;
+        }
+        return self::$args[self::$argIndex++] ?? null;
+    }
+
+    private static function argOrFail(string $name): string {
+        $arg = self::arg();
+        if ($arg === null) {
+            fwrite(STDERR, "Missing required argument: $name\n");
+            exit(1);
+        }
+        return $arg;
+    }
+
+    private static function cmdLogin(): void {
+        $username = self::argOrFail('username');
+        $password = self::argOrFail('password');
+        
+        self::$credentials = [
+            'username' => $username,
+            'password' => $password
+        ];
+        
+        try {
+            $response = self::request('GET', '/user');
+            self::saveCredentials();
+            echo "Logged in as: {$response['username']}\n";
+        } catch (\Throwable $e) {
+            self::$credentials = null;
+            fwrite(STDERR, "Login failed: " . $e->getMessage() . "\n");
+            exit(1);
+        }
+    }
+
+    private static function cmdLogout(): void {
+        if (file_exists(self::$authFile)) {
+            unlink(self::$authFile);
+        }
+        self::$credentials = null;
+        echo "Logged out\n";
+    }
+
+    private static function cmdWhoami(): void {
+        try {
+            $response = self::request('GET', '/user');
+            echo "Logged in as: {$response['username']}\n";
+            echo "Server: " . self::$serverUrl . "\n";
+        } catch (\Throwable $e) {
+            echo "Not logged in\n";
+        }
+    }
+
+    private static function cmdSetServer(): void {
+        $url = self::argOrFail('server-url');
+        
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            fwrite(STDERR, "Invalid URL\n");
+            exit(1);
+        }
+        
+        self::$serverUrl = rtrim($url, '/');
+        self::$apiUrl = self::$serverUrl . '/api/v1';
+        
+        if (self::$credentials !== null) {
+            self::saveCredentials();
+        }
+        
+        echo "Server URL set to: " . self::$serverUrl . "\n";
+    }
+
+    private static function handleList(string $method, string $path): array {
+        return self::request('GET', '/repos');
+    }
+
+    private static function handleInfo(string $method, string $path): array {
+        $name = self::argOrFail('name');
+        return self::request('GET', '/repos/' . urlencode($name));
+    }
+
+    private static function handleCreate(string $method, string $path): array {
+        $name = self::argOrFail('name');
+        return self::request('POST', '/repos/' . urlencode($name));
+    }
+
+    private static function handleDelete(string $method, string $path): array {
+        $name = self::argOrFail('name');
+        return self::request('DELETE', '/repos/' . urlencode($name));
+    }
+
+    private static function handleUserAdd(string $method, string $path): array {
+        $name = self::argOrFail('repo-name');
+        $username = self::argOrFail('username');
+        return self::request('POST', '/repos/' . urlencode($name) . '/users/' . urlencode($username));
+    }
+
+    private static function handleUserRemove(string $method, string $path): array {
+        $name = self::argOrFail('repo-name');
+        $username = self::argOrFail('username');
+        return self::request('DELETE', '/repos/' . urlencode($name) . '/users/' . urlencode($username));
+    }
+
+    private static function handleUserList(string $method, string $path): array {
+        $name = self::argOrFail('repo-name');
+        return self::request('GET', '/repos/' . urlencode($name) . '/users');
+    }
+
+    private static function handleSetPublic(string $method, string $path): array {
+        $name = self::argOrFail('repo-name');
+        return self::request('PUT', '/repos/' . urlencode($name) . '/public');
+    }
+
+    private static function handleSetPrivate(string $method, string $path): array {
+        $name = self::argOrFail('repo-name');
+        return self::request('PUT', '/repos/' . urlencode($name) . '/private');
+    }
+
+    private static function formatRepos(string $method, string $path): array {
+        return self::request('GET', '/repos');
+    }
+
+    private static function formatRepoInfo(string $method, string $path): array {
+        $name = self::argOrFail('name');
+        return self::request('GET', '/repos/' . urlencode($name));
+    }
+
+    private static function formatUserList(string $method, string $path): array {
+        $name = self::argOrFail('repo-name');
+        return self::request('GET', '/repos/' . urlencode($name) . '/users');
+    }
+
+    private static function printHelp(): void {
+        echo <<<HELP
+Lugit - Git HTTP Server CLI
+
+Usage: lugit <command> [options]
+
+Commands:
+    login <user> <pass>      Login with username and password
+    logout                  Logout current user
+    whoami                  Show current user and server
+    set-server <url>        Set server URL (e.g. http://localhost:8080)
+    list                    List all repositories
+    info <name>             Show repository information
+    create <name>           Create a new bare repository
+    delete <name>           Delete a repository
+    user-add <name> <user>  Add user access to repository
+    user-remove <name> <user> Remove user access from repository
+    user-list <name>        List users with repository access
+    set-public <name>       Make repository public
+    set-private <name>      Make repository private
+    help [command]          Show help for a command
+
+HELP;
+    }
+
+    private static function printCommandHelp(string $command): void {
+        $help = [
+            'login' => "lugit login <username> <password>\n\nLogin to the git server.\n\nArguments:\n  username    Your username\n  password    Your password",
+            'logout' => "lugit logout\n\nLogout and clear stored credentials.",
+            'whoami' => "lugit whoami\n\nShow current logged in user and server URL.",
+            'set-server' => "lugit set-server <url>\n\nSet the server URL.\n\nArguments:\n  url    Server URL (e.g. http://localhost:8080)",
+            'list' => "lugit list\n\nList all repositories.",
+            'info' => "lugit info <name>\n\nShow repository information.\n\nArguments:\n  name    Repository name",
+            'create' => "lugit create <name>\n\nCreate a new bare repository.\n\nArguments:\n  name    Repository name",
+            'delete' => "lugit delete <name>\n\nDelete a repository.\n\nArguments:\n  name    Repository name",
+            'user-add' => "lugit user-add <name> <user>\n\nAdd a user to the repository.\n\n\nArguments:\n  name    Repository name\n  user    Username to add",
+            'user-remove' => "lugit user-remove <name> <user>\n\nRemove a user from the repository.\n\nArguments:\n  name    Repository name\n  user    Username to remove",
+            'user-list' => "lugit user-list <name>\n\nList all users with repository access.\n\nArguments:\n  name    Repository name",
+            'set-public' => "lugit set-public <name>\n\nMake repository publicly readable.\n\n\nArguments:\n  name    Repository name",
+            'set-private' => "lugit set-private <name>\n\nMake repository private.\n\nArguments:\n  name    Repository name",
+        ];
+
+        if (isset($help[$command])) {
+            echo $help[$command] . "\n";
+        } else {
+            fwrite(STDERR, "Unknown command: $command\n");
+            exit(1);
+        }
+    }
+}
+
+Cli::run($argv);

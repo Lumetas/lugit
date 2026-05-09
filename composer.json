@@ -1,0 +1,16 @@
+{
+    "name": "lumetas/lugit",
+    "autoload": {
+        "psr-4": {
+            "Lugit\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "lumetas"
+        }
+    ],
+    "require": {
+        "fastvolt/markdown": "^0.2.5"
+    }
+}

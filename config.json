@@ -1,0 +1,16 @@
+{
+	"users": [
+		{
+			"username": "lum",
+			"password": "123"
+		},
+		{
+			"username": "svsp",
+			"password": "123"
+		}
+	], // Список пользователей с логинами и паролями
+	"repositoriesPath": "/home/lum/LumProjects/php-git-server/repos", // Путь к папке с bare репозиториями
+	"excludedFolders" : [
+		"test3" // Список файлов и папок которые должны быть исключены из списка репозиториев
+	]
+}
