@@ -68,6 +68,12 @@ class Cli
 			exit(1);
 		}
 
+		// CI/CD set command (custom handler with file upload)
+		if ($command === 'cicd-set') {
+			self::cmdCicdSet();
+			return;
+		}
+
 		// Dispatch commands
 		$handlers = [
 			'list' => ['GET', '/repos', null, 'List all repositories'],
@@ -79,6 +85,10 @@ class Cli
 			'user-list' => ['GET', '/repos/{name}/users', 'name', 'List users with repository access'],
 			'set-public' => ['PUT', '/repos/{name}/public', 'name', 'Make repository public'],
 			'set-private' => ['PUT', '/repos/{name}/private', 'name', 'Make repository private'],
+			'cicd-list' => ['GET', '/repos/{name}/cicd', 'name', 'List CI/CD hooks for repository'],
+			'cicd-del' => ['DELETE', '/repos/{name}/cicd/{branch}', ['name', 'branch'], 'Delete CI/CD hook'],
+			'cicd-logs' => ['GET', '/repos/{name}/cicd/logs', 'name', 'Show CI/CD logs for repository'],
+			'cicd-run' => ['POST', '/repos/{name}/cicd/{branch}/run', ['name', 'branch'], 'Manually run CI/CD hook'],
 		];
 
 		if (!isset($handlers[$command])) {
@@ -190,7 +200,8 @@ class Cli
 		if ($httpCode >= 400) {
 			$result = json_decode($response, true);
 			$errorMsg = $result['error'] ?? $result['message'] ?? "HTTP $httpCode";
-			throw new \RuntimeException($errorMsg);
+			echo "Error: $errorMsg\n";
+			exit(1);
 		}
 
 		$result = json_decode($response, true);
@@ -346,6 +357,27 @@ class Cli
 		self::printSuccess("Server URL set to: " . self::$serverUrl);
 	}
 
+	private static function cmdCicdSet(): void
+	{
+		$repoName = self::argOrFail('repoName');
+		$branchName = self::argOrFail('branchName');
+		$scriptPath = self::argOrFail('scriptPath');
+
+		if (!file_exists($scriptPath)) {
+			self::printError("Script file not found: $scriptPath");
+			exit(1);
+		}
+
+		$scriptContent = file_get_contents($scriptPath);
+		$encoded = base64_encode($scriptContent);
+
+		$path = '/repos/' . urlencode($repoName) . '/cicd/' . urlencode($branchName);
+		$data = ['script' => $encoded];
+
+		$response = self::request('POST', $path, $data);
+		self::printSuccess("CI/CD hook installed for branch '$branchName' in '$repoName'");
+	}
+
 	private static function formatOutput(string $command, array $data): void
 	{
 		switch ($command) {
@@ -376,6 +408,18 @@ class Cli
 				break;
 			case 'set-private':
 				self::printSuccess("Repository is now private");
+				break;
+			case 'cicd-list':
+				self::formatCicdList($data);
+				break;
+			case 'cicd-logs':
+				self::formatCicdLogs($data);
+				break;
+			case 'cicd-del':
+				self::printSuccess("CI/CD hook deleted successfully");
+				break;
+			case 'cicd-run':
+				self::printSuccess("CI/CD hook triggered manually");
 				break;
 			default:
 				echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
@@ -450,6 +494,45 @@ class Cli
 		echo sprintf("\nTotal: %d users\n", count($users));
 	}
 
+	private static function formatCicdList(array $data): void
+	{
+		$hooks = $data['hooks'] ?? [];
+		if (empty($hooks)) {
+			echo "No CI/CD hooks installed.\n";
+			return;
+		}
+
+		echo "\n";
+		echo "┌─────────────────────────────────────────┐\n";
+		echo "│ CI/CD Hooks                             │\n";
+		echo "├─────────────────────────────────────────┤\n";
+
+		foreach ($hooks as $hook) {
+			echo "│ • " . str_pad($hook, 37) . "│\n";
+		}
+
+		echo "└─────────────────────────────────────────┘\n";
+		echo sprintf("\nTotal: %d hook(s)\n", count($hooks));
+	}
+
+	private static function formatCicdLogs(array $data): void
+	{
+		$logs = $data['logs'] ?? [];
+		if (empty($logs)) {
+			echo "No CI/CD logs found.\n";
+			return;
+		}
+
+		echo "\n";
+		foreach ($logs as $branch => $content) {
+			echo "╔══════════════════════════════════════════╗\n";
+			echo "║ Branch: " . str_pad($branch, 32) . "║\n";
+			echo "╚══════════════════════════════════════════╝\n";
+			echo $content ?: "(empty)\n";
+			echo "\n";
+		}
+	}
+
 	private static function printSuccess(string $message): void
 	{
 		echo "\033[32m✓ " . $message . "\033[0m\n";
@@ -491,6 +574,13 @@ class Cli
     user-add <repo> <user>                 Add user access to repository
     user-remove <repo> <user>              Remove user access from repository
     user-list <repo>                       List users with repository access
+
+\033[33mCI/CD Commands:\033[0m
+    cicd-set <repo> <branch> <script>    Upload and install a CI/CD hook script
+    cicd-del <repo> <branch>             Delete a CI/CD hook
+    cicd-list <repo>                     List installed CI/CD hooks
+    cicd-run <repo> <branch>             Manually trigger a CI/CD hook
+    cicd-logs <repo>                     Show CI/CD logs for repository
 
 \033[33mOther Commands:\033[0m
     help [command]                         Show help for a command
@@ -537,6 +627,16 @@ HELP;
 			'set-public' => "\033[33mMake repository public\033[0m\n\nUsage: lugit set-public <name>\n\nMakes the repository publicly readable without authentication\n\nExample:\n  lugit set-public my-project",
 
 			'set-private' => "\033[33mMake repository private\033[0m\n\nUsage: lugit set-private <name>\n\nRestricts repository access to authorized users only\n\nExample:\n  lugit set-private my-project",
+
+			'cicd-set' => "\033[33mInstall CI/CD hook\033[0m\n\nUsage: lugit cicd-set <repo> <branch> <script>\n\nUploads a script to the server that runs automatically on push to the specified branch.\nThe script can be written in any language available on the server.\n\nArguments:\n  repo      Repository name\n  branch    Branch name (e.g., main, develop, feature/*)\n  script    Path to local script file\n\nExamples:\n  lugit cicd-set my-project main ./deploy.sh\n  lugit cicd-set my-project develop ./test.sh",
+
+			'cicd-del' => "\033[33mDelete CI/CD hook\033[0m\n\nUsage: lugit cicd-del <repo> <branch>\n\nRemoves the CI/CD hook for the specified branch.\n\nArguments:\n  repo      Repository name\n  branch    Branch name\n\nExample:\n  lugit cicd-del my-project main",
+
+			'cicd-list' => "\033[33mList CI/CD hooks\033[0m\n\nUsage: lugit cicd-list <repo>\n\nLists all installed CI/CD hooks for a repository.\n\nArguments:\n  repo      Repository name\n\nExample:\n  lugit cicd-list my-project",
+
+			'cicd-logs' => "\033[33mShow CI/CD logs\033[0m\n\nUsage: lugit cicd-logs <repo>\n\nDisplays the execution logs for all CI/CD hooks in a repository.\n\nArguments:\n  repo      Repository name\n\nExample:\n  lugit cicd-logs my-project",
+
+			'cicd-run' => "\033[33mRun CI/CD hook manually\033[0m\n\nUsage: lugit cicd-run <repo> <branch>\n\nTriggers a CI/CD hook manually without pushing to the branch.\n\nArguments:\n  repo      Repository name\n  branch    Branch name\n\nExample:\n  lugit cicd-run my-project main",
 		];
 
 		if (isset($helps[$command])) {

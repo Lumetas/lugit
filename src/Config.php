@@ -51,6 +51,16 @@ class Config {
         return self::get('users', []);
     }
 
+	public static function getUser(string $username): ?array {
+		$users = self::getUsers();
+		foreach ($users as $u) {
+			if ($u['username'] === $username) {
+				return $u;
+			}
+		}
+		return null;
+	}
+
 	public static function setUsers(array $users): void {
 		self::$config['users'] = $users;
 	}

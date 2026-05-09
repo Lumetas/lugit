@@ -68,6 +68,42 @@ class GitApi
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/cicd/logs/?$#', $path, $matches)) {
+			$this->authenticate();
+			$repoName = $matches[1];
+			if ($method === 'GET') {
+				$this->cicdGetLogs($repoName);
+			} else {
+				$this->sendError(405, "Method not allowed");
+			}
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/cicd/([^/]+)/run/?$#', $path, $matches)) {
+			$this->authenticate();
+			$repoName = $matches[1];
+			$branch = urldecode($matches[2]);
+			if ($method === 'POST') {
+				$this->cicdRunHook($repoName, $branch);
+			} else {
+				$this->sendError(405, "Method not allowed");
+			}
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/cicd/([^/]+)/?$#', $path, $matches)) {
+			$this->authenticate();
+			$repoName = $matches[1];
+			$branch = urldecode($matches[2]);
+			if ($method === 'POST') {
+				$this->cicdSetHook($repoName, $branch);
+			} elseif ($method === 'DELETE') {
+				$this->cicdDelHook($repoName, $branch);
+			} else {
+				$this->sendError(405, "Method not allowed");
+			}
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/cicd/?$#', $path, $matches)) {
+			$this->authenticate();
+			$repoName = $matches[1];
+			if ($method === 'GET') {
+				$this->cicdListHooks($repoName);
+			} else {
+				$this->sendError(405, "Method not allowed");
+			}
 		} elseif (preg_match('#^/?api/v1/user/?$#', $path)) {
 			if ($method === 'GET') {
 				$this->getCurrentUser();
@@ -99,14 +135,10 @@ class GitApi
 			$credentials = base64_decode(substr($authHeader, 6));
 			if ($credentials && str_contains($credentials, ':')) {
 				[$username, $password] = explode(':', $credentials, 2);
-				$users = Config::getUsers();
-				foreach ($users as $u) {
-					if ($u['username'] === $username) {
-						if ($u['password'] === hash('sha256', $password)) {
-							$this->currentUser = ['username' => $username];
-							return;
-						}
-					}
+				$user = Config::getUser($username);
+				if ($user !== null && $user['password'] === hash('sha256', $password)) {
+					$this->currentUser = $user;
+					return;
 				}
 			}
 		}
@@ -140,7 +172,8 @@ class GitApi
 
 		$users[] = [
 			'username' => $username,
-			'password' => hash('sha256', $password)
+			'password' => hash('sha256', $password),
+			'allow_cicd' => false
 		];
 
 		Config::setUsers($users);
@@ -337,6 +370,190 @@ class GitApi
 			'public' => $public,
 			'message' => "Repository '$name' is now " . ($public ? 'public' : 'private')
 		]);
+	}
+
+	private function requireCicdAccess(): void
+	{
+		$allow = $this->currentUser['allow_cicd'] ?? false;
+		if (!$allow) {
+			$this->sendError(403, "CI/CD access denied. Contact administrator to enable CI/CD permissions.");
+		}
+	}
+
+	private function ensureLugitDirs(string $repoPath): void
+	{
+		$lugitDir = $repoPath . '/lugit';
+		@mkdir($lugitDir . '/hooks', 0755, true);
+		@mkdir($lugitDir . '/logs', 0755, true);
+	}
+
+	private function writePostReceiveHook(string $repoPath): void
+	{
+		$hooksDir = $repoPath . '/hooks';
+		@mkdir($hooksDir, 0755, true);
+		$hookPath = $hooksDir . '/post-receive';
+
+		if (file_exists($hookPath)) {
+			$existing = file_get_contents($hookPath);
+			if (str_contains($existing, 'Lugit CI/CD post-receive hook')) {
+				return;
+			}
+			rename($hookPath, $hookPath . '.lugit.bak');
+		}
+
+		$script = <<<'HOOK'
+#!/bin/sh
+# Lugit CI/CD post-receive hook - DO NOT EDIT
+LUGIT_DIR="$(cd "$(dirname "$0")/.." && pwd)/lugit"
+if [ ! -d "$LUGIT_DIR/hooks" ]; then
+    exit 0
+fi
+mkdir -p "$LUGIT_DIR/logs"
+while read oldrev newrev refname; do
+    case "$refname" in
+        refs/heads/*)
+            BRANCH="${refname#refs/heads/}"
+            HOOK_SCRIPT="$LUGIT_DIR/hooks/$BRANCH"
+            LOG_FILE="$LUGIT_DIR/logs/$BRANCH"
+            if [ -f "$HOOK_SCRIPT" ] && [ -x "$HOOK_SCRIPT" ]; then
+                echo "=== $(date) === Push to $BRANCH ===" >> "$LOG_FILE"
+                nohup "$HOOK_SCRIPT" "$oldrev" "$newrev" "$refname" >> "$LOG_FILE" 2>&1 &
+            fi
+            ;;
+    esac
+done
+HOOK;
+
+		file_put_contents($hookPath, $script);
+		chmod($hookPath, 0755);
+	}
+
+	private function cicdListHooks(string $repoName): void
+	{
+		$this->checkRepoAccess($repoName);
+		$this->requireCicdAccess();
+
+		$repoPath = $this->basePath . '/' . $repoName;
+		$hooksDir = $repoPath . '/lugit/hooks';
+
+		$hooks = [];
+		if (is_dir($hooksDir)) {
+			$files = scandir($hooksDir);
+			foreach ($files as $file) {
+				if ($file === '.' || $file === '..') continue;
+				$hooks[] = $file;
+			}
+		}
+
+		$this->sendJson(['hooks' => $hooks]);
+	}
+
+	private function cicdSetHook(string $repoName, string $branch): void
+	{
+		$this->checkRepoAccess($repoName);
+		$this->requireCicdAccess();
+		if (str_contains($branch, '..')) {
+			$this->sendError(400, "Invalid branch name");
+		}
+
+		$data = json_decode(file_get_contents('php://input'), true);
+		$scriptBase64 = $data['script'] ?? null;
+
+		if (!$scriptBase64) {
+			$this->sendError(400, "Missing 'script' field with base64-encoded content");
+		}
+
+		$scriptContent = base64_decode($scriptBase64, true);
+		if ($scriptContent === false) {
+			$this->sendError(400, "Invalid base64 encoding");
+		}
+
+		$repoPath = $this->basePath . '/' . $repoName;
+		$this->ensureLugitDirs($repoPath);
+
+		$hookFile = $repoPath . '/lugit/hooks/' . $branch;
+		$hookDir = dirname($hookFile);
+		if (!is_dir($hookDir)) {
+			mkdir($hookDir, 0755, true);
+		}
+
+		if (file_put_contents($hookFile, $scriptContent) === false) {
+			$this->sendError(500, "Failed to write hook script");
+		}
+
+		chmod($hookFile, 0755);
+
+		$this->writePostReceiveHook($repoPath);
+
+		$this->sendJson(['message' => "CI/CD hook installed for branch '$branch' in '$repoName'"]);
+	}
+
+	private function cicdDelHook(string $repoName, string $branch): void
+	{
+		$this->checkRepoAccess($repoName);
+		$this->requireCicdAccess();
+		if (str_contains($branch, '..')) {
+			$this->sendError(400, "Invalid branch name");
+		}
+
+		$repoPath = $this->basePath . '/' . $repoName;
+		$hookFile = $repoPath . '/lugit/hooks/' . $branch;
+
+		if (!file_exists($hookFile)) {
+			$this->sendError(404, "Hook not found for branch '$branch'");
+		}
+
+		unlink($hookFile);
+		$this->sendJson(['message' => "CI/CD hook removed for branch '$branch'"]);
+	}
+
+	private function cicdGetLogs(string $repoName): void
+	{
+		$this->checkRepoAccess($repoName);
+
+		$repoPath = $this->basePath . '/' . $repoName;
+		$logsDir = $repoPath . '/lugit/logs';
+
+		$logs = [];
+		if (is_dir($logsDir)) {
+			$files = scandir($logsDir);
+			foreach ($files as $file) {
+				if ($file === '.' || $file === '..') continue;
+				$logPath = $logsDir . '/' . $file;
+				$logs[$file] = file_get_contents($logPath);
+			}
+		}
+
+		$this->sendJson(['logs' => $logs]);
+	}
+
+	private function cicdRunHook(string $repoName, string $branch): void
+	{
+		$this->checkRepoAccess($repoName);
+		$this->requireCicdAccess();
+		if (str_contains($branch, '..')) {
+			$this->sendError(400, "Invalid branch name");
+		}
+
+		$repoPath = $this->basePath . '/' . $repoName;
+		$hookFile = $repoPath . '/lugit/hooks/' . $branch;
+
+		if (!file_exists($hookFile) || !is_executable($hookFile)) {
+			$this->sendError(404, "Hook not found for branch '$branch'");
+		}
+
+		$logFile = $repoPath . '/lugit/logs/' . $branch;
+		$logDir = dirname($logFile);
+		if (!is_dir($logDir)) {
+			mkdir($logDir, 0755, true);
+		}
+
+		$cmd = "echo \"=== $(date) === Manual run on $branch ===\" >> " . escapeshellarg($logFile)
+			. " && nohup " . escapeshellarg($hookFile) . " >> " . escapeshellarg($logFile) . " 2>&1 &";
+
+		exec($cmd);
+
+		$this->sendJson(['message' => "CI/CD hook triggered manually for branch '$branch'"]);
 	}
 
 	private function sendJson(array $data, int $code = 200): void

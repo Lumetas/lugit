@@ -4,5 +4,6 @@
 	"excludedFolders" : [
 		"test3"
 	],
-	"enableRegister": false
+	"enableRegister": false,
+	"allow_cicd_default": false
 }
