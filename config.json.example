@@ -1,16 +1,8 @@
 {
-	"users": [
-		{
-			"username": "user",
-			"password": "password"
-		},
-		{
-			"username": "user2",
-			"password": "password2"
-		}
-	],
+	"users": [],
 	"repositoriesPath": "path/to/folder",
 	"excludedFolders" : [
 		"test3"
-	]
+	],
+	"enableRegister": false
 }

@@ -35,10 +35,10 @@ class Cli {
         }
 
         // Auth commands (don't require authentication)
-        /* if ($command === 'register') { */
-        /*     self::cmdRegister(); */
-        /*     return; */
-        /* } */
+        if ($command === 'register') {
+            self::cmdRegister();
+            return;
+        }
 
         if ($command === 'login') {
             self::cmdLogin();
@@ -241,7 +241,14 @@ class Cli {
         
         if ($httpCode === 201 || $httpCode === 200) {
             self::printSuccess("User registered successfully!");
-            echo "\nYou can now login with: lugit login \"$serverUrl\" \"$username\" \"$password\"\n";
+			
+			self::$credentials = [
+				'server' => self::$serverUrl,
+				'username' => $username,
+				'password' => $password
+			];
+			self::saveCredentials();
+
         } elseif ($httpCode === 409) {
             self::printError("User already exists");
         } else {
@@ -449,6 +456,7 @@ class Cli {
 
 \033[33mAuthentication Commands:\033[0m
     login <server-url> <user> <pass>       Login to a git server
+	register <server-url> <user> <pass>    Register a new user
     logout                                 Logout current user
     whoami                                 Show current user and server
     set-server <url>                       Set default server URL

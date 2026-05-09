@@ -51,8 +51,17 @@ class Config {
         return self::get('users', []);
     }
 
+	public static function setUsers(array $users): void {
+		self::$config['users'] = $users;
+	}
+
     public static function reload(): void {
         self::$config = null;
     }
+
+	public static function save(): void {
+		$path = self::$configPath ?? dirname(__DIR__) . '/config.json';
+		file_put_contents($path, json_encode(self::$config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+	}
 }
 
