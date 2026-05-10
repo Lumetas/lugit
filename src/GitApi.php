@@ -613,6 +613,7 @@ HOOK;
 		@file_put_contents($logFile, $logEntry, FILE_APPEND);
 
 		$cmd = "nohup " . escapeshellarg($hookFile) . " >> " . escapeshellarg($logFile) . " 2>&1 &";
+		chdir($repoPath);
 		exec($cmd);
 
 		$this->sendJson(['message' => "CI/CD hook triggered manually for branch '$branch'"]);

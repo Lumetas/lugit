@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lugit - Dashboard</title>
+	<link rel="stylesheet" href="/_style.css">
+</head>
+<body>
+    <div class="container">
+        <div id="loginSection">
+            <div class="login-box">
+                <h2>Login to Lugit</h2>
+                <!-- <div class="form-group"> -->
+                <!--     <label>Server URL</label> -->
+                <!--     <input type="text" id="serverUrl" placeholder="http://localhost:8080"> -->
+                <!-- </div> -->
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="username" placeholder="Enter username">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password" placeholder="Enter password">
+                </div>
+                <button class="btn btn-primary" style="width: 100%;" onclick="apiLogin()">Login</button>
+            </div>
+        </div>
+
+        <div id="dashboardSection" style="display: none;">
+            <div class="header">
+                <h1 onclick="showTab('repos')">📦 Lugit Dashboard</h1>
+                <div class="user-info">
+                    <span id="currentUser"></span>
+                    <button class="btn btn-secondary btn-small" onclick="showCreateRepo()">New Repository</button>
+                    <button class="btn btn-secondary btn-small" onclick="showLogout()">Logout</button>
+                </div>
+            </div>
+            <!---->
+            <!-- <div class="tabs"> -->
+            <!--     <button class="tab active" onclick="showTab('repos')">Repositories</button> -->
+            <!--     <button class="tab" onclick="showTab('cicd')">CI/CD</button> -->
+            <!--     <button class="tab" onclick="showTab('settings')">Settings</button> -->
+            <!-- </div> -->
+
+            <div id="reposSection" class="section active">
+                <div class="section-header">
+                    <h2>Your Repositories</h2>
+                </div>
+                <div id="repoList" class="repo-list">
+                    <div class="loading">Loading</div>
+                </div>
+            </div>
+
+            <div id="cicdSection" class="section">
+                <div class="section-header">
+                    <h2>CI/CD Hooks</h2>
+                </div>
+                <div class="form-group">
+                    <label>Select Repository</label>
+                    <select id="cicdRepoSelect" onchange="loadCicdData()">
+                        <option value="">-- Select repository --</option>
+                    </select>
+                </div>
+                <div id="cicdContent" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+                        <h3 style="color: #f0f6fc;">Hooks</h3>
+                        <!-- <button class="btn btn-primary btn-small" onclick="showAddHook()">Add Hook</button> -->
+                    </div>
+                    <div id="hooksList"></div>
+                    
+                    <h3 style="color: #f0f6fc; margin: 24px 0 12px;">Logs</h3>
+                    <div class="form-group">
+                        <label>Branch</label>
+                        <select id="logsBranchSelect" onchange="loadLogs()">
+                            <option value="">-- Select branch --</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                        <button class="btn btn-secondary btn-small" onclick="loadLogs()">Refresh</button>
+                        <button class="btn btn-danger btn-small" onclick="clearLogs()">Clear Logs</button>
+                    </div>
+                    <div id="logsViewer" class="logs-viewer"></div>
+                </div>
+            </div>
+
+            <div id="settingsSection" class="section">
+                <div class="section-header">
+                    <h2>Repository Settings</h2>
+                </div>
+                <div class="form-group">
+                    <label>Select Repository</label>
+                    <select id="settingsRepoSelect" onchange="loadRepoSettings()">
+                        <option value="">-- Select repository --</option>
+                    </select>
+                </div>
+                <div id="settingsContent" style="display: none;" class="card">
+                    <h3 style="color: #f0f6fc; margin-bottom: 16px;">Users with Access</h3>
+                    <div id="usersList"></div>
+                    <div style="margin-top: 16px;">
+                        <div class="form-group" style="margin-bottom: 8px;">
+                            <label>Add User</label>
+                            <input type="text" id="newUserName" placeholder="Username">
+                        </div>
+                        <button class="btn btn-primary" onclick="addUser()">Add User</button>
+                    </div>
+                    
+                    <h3 style="color: #f0f6fc; margin: 24px 0 16px;">Visibility</h3>
+                    <button class="btn btn-secondary" id="toggleVisibilityBtn" onclick="toggleVisibility()">Make Private</button>
+                    
+                    <h3 style="color: #f0f6fc; margin: 24px 0 16px;">Danger Zone</h3>
+                    <button class="btn btn-danger" onclick="confirmDeleteRepo()">Delete Repository</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay" onclick="if(event.target === this) closeModal()">
+        <div class="modal" id="modalContent"></div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/_script.js"></script>
+</body>
+</html>
