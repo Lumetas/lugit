@@ -42,6 +42,11 @@ class Cli
 			return;
 		}
 
+		if ($command === 'changepass') {
+			self::cmdChangePassword();
+			return;
+		}
+
 		if ($command === 'login') {
 			self::cmdLogin();
 			return;
@@ -229,6 +234,42 @@ class Cli
 			exit(1);
 		}
 		return $arg;
+	}
+
+	private static function cmdChangePassword(): void
+	{
+		$newPassword = self::argOrFail('new-password');
+
+		$serverUrl = self::$credentials['server'];
+
+		$apiUrl = $serverUrl . '/api/v1';
+
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, $apiUrl . '/changepass');
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_POST, true);
+		curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+			'username' => self::$credentials['username'],
+			'password' => self::$credentials['password'],
+			'newPassword' => $newPassword
+		]));
+		curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+
+		$response = curl_exec($ch);
+		$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		curl_close($ch);
+
+		if ($httpCode === 200) {
+			self::printSuccess("Password changed successfully!");
+			self::$credentials['password'] = $newPassword;
+			self::saveCredentials();
+		} elseif ($httpCode === 401) {
+			self::printError("Invalid credentials");
+		} else {
+			$result = json_decode($response, true);
+			$error = $result['error'] ?? "Password change failed (HTTP $httpCode)";
+			self::printError($error);
+		}
 	}
 
 	private static function cmdRegister(): void
@@ -562,6 +603,7 @@ class Cli
 \033[33mAuthentication Commands:\033[0m
     login <server-url> <user> <pass>       Login to a git server
     register <server-url> <user> <pass>    Register a new user
+    changepass <new-password>              Change current user password
     logout                                 Logout current user
     whoami                                 Show current user and server
     set-server <url>                       Set default server URL
@@ -608,6 +650,7 @@ HELP;
 			'register' => "\033[33mRegister a new user account\033[0m\n\nUsage: lugit register <server-url> <username> <password>\n\nArguments:\n  server-url    Git server URL (e.g., http://localhost:8080)\n  username      Desired username\n  password      Desired password\n\nExample:\n  lugit register http://localhost:8080 alice mypass123",
 
 			'login' => "\033[33mLogin to a git server\033[0m\n\nUsage: lugit login <server-url> <username> <password>\n\nArguments:\n  server-url    Git server URL\n  username      Your username\n  password      Your password\n\nExample:\n  lugit login http://localhost:8080 alice mypass123",
+			'changepass' => "\033[33mChange current user password\033[0m\n\nUsage: lugit changepass <new-password>\n\nArguments:\n  new-password  New password\n\nExample:\n  lugit changepass newpass123",
 
 			'logout' => "\033[33mLogout\033[0m\n\nUsage: lugit logout\n\nClears stored credentials from ~/.lugit.json",
 

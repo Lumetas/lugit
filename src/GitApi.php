@@ -125,9 +125,45 @@ class GitApi
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
+		} elseif (preg_match('#^/?api/v1/changepass/?$#', $path)) {
+			if ($method === 'POST') {
+				$this->changePassword();
+			} else {
+				$this->sendError(405, "Method not allowed");
+			}
 		} else {
 			$this->sendError(404, "Not found");
 		}
+	}
+
+
+
+
+	private function changePassword(): void
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		$username = $data['username'] ?? null;
+		$password = $data['password'] ?? null;
+		$newPassword = $data['newPassword'] ?? null;
+
+		if (!$username || !$password || !$newPassword) {
+			$this->sendError(400, "username, password and newPassword required");
+		}
+
+		$users = Config::getUsers();
+		foreach ($users as &$u) {
+			if ($u['username'] === $username) {
+				if ($u['password'] === hash('sha256', $password)) {
+					$u['password'] = hash('sha256', $newPassword);
+					Config::setUsers($users);
+					Config::save();
+					$this->sendJson(['message' => "Password changed"]);
+					return;
+				}
+			}
+		}
+
+		$this->sendError(401, "Invalid credentials");
 	}
 
 	private function authenticate(): void
