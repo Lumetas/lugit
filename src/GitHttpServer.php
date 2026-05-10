@@ -19,13 +19,6 @@ class GitHttpServer
 	{
 		$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 		$method = $_SERVER['REQUEST_METHOD'];
-		/*       error_log("=== Git Request: $method $path ==="); */
-		/* error_log("\n\n\n\n\n"); */
-		$headers = getallheaders();
-		/* error_log("Headers: " . json_encode($headers)); */
-		/* error_log("\n\n\n\n\n"); */
-		/* error_log(print_r($_SERVER, true)); */
-		/* error_log("\n\n\n\n\n"); */
 
 		if (preg_match('#^/?repos/([^/]+)(/.*)?$#', $path, $matches)) {
 			$repoName = $matches[1];
@@ -41,7 +34,7 @@ class GitHttpServer
 
 		error_log("Repo: $repoName, Action: $action");
 
-		if (in_array($repoName, $this->excludedFolders)) {
+		if (!Utils::isValidRepoName($repoName) || in_array($repoName, $this->excludedFolders)) {
 			$this->sendError(404, "Repository not found");
 			return;
 		}
@@ -75,28 +68,23 @@ class GitHttpServer
 		$repoConfig = RepoConfig::load($repoPath);
 
 		if ($service === 'git-receive-pack') {
-			if (!$repoConfig->public) {
-				if (!$this->authenticate()) {
-					header('HTTP/1.1 401 Unauthorized');
-
-					header('WWW-Authenticate: Basic realm="Git-Server"');
-					$this->sendError(401, "Authentication required");
-					return;
-				}
-				if (!$repoConfig->hasUser($this->currentUser['username'])) {
-					$this->sendError(403, "Access denied");
-					return;
-				}
+			if (!$this->authenticate()) {
+				header('HTTP/1.1 401 Unauthorized');
+				header('WWW-Authenticate: Basic realm="Git-Server"');
+				$this->sendError(401, "Authentication required");
+				return;
+			}
+			if (!$repoConfig->hasUser($this->currentUser['username'])) {
+				$this->sendError(403, "Access denied");
+				return;
 			}
 		} else {
 			if (!$repoConfig->public) {
-
 				if (!$this->authenticate()) {
 					$this->sendError(401, "Authentication required");
 					return;
 				}
 				if (!$repoConfig->hasUser($this->currentUser['username'])) {
-					error_log(print_r($this->currentUser, true));
 					$this->sendError(403, "Access denied");
 					return;
 				}

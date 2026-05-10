@@ -217,6 +217,8 @@ class GitApi
 
 		Config::setUsers($users);
 		Config::save();
+
+		$this->sendJson(['message' => 'User registered successfully'], 201);
 	}
 
 	private function getRepoConfig(string $name): ?RepoConfig
@@ -256,7 +258,7 @@ class GitApi
 
 		$users = Config::getUsers();
 		foreach ($users as $u) {
-			if ($u['username'] === $username && $u['password'] === $password) {
+			if ($u['username'] === $username && $u['password'] === hash('sha256', $password)) {
 				$this->sendJson(['username' => $username]);
 				return;
 			}
@@ -268,16 +270,20 @@ class GitApi
 	private function getCurrentUser(): void
 	{
 		$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? null;
-		$username = null;
 
 		if ($authHeader && str_starts_with($authHeader, 'Basic ')) {
 			$credentials = base64_decode(substr($authHeader, 6));
 			if ($credentials && str_contains($credentials, ':')) {
-				[$username] = explode(':', $credentials, 2);
+				[$username, $password] = explode(':', $credentials, 2);
+				$user = Config::getUser($username);
+				if ($user !== null && $user['password'] === hash('sha256', $password)) {
+					$this->sendJson(['username' => $username]);
+					return;
+				}
 			}
 		}
 
-		$this->sendJson(['username' => $username]);
+		$this->sendJson(['username' => null]);
 	}
 
 	private function listRepos(): void

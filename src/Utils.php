@@ -96,7 +96,7 @@ class Utils {
             mkdir(dirname($path), 0755, true);
         }
         
-        $cmd = "git init --bare '" . escapeshellarg($path) . "'";
+		$cmd = "git init --bare " . escapeshellarg($path);
         $result = self::runGit($cmd, dirname($path));
         
         if ($result['exitCode'] !== 0) {

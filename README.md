@@ -1,145 +1,211 @@
-# Lugit - Git HTTP Server
+# Lugit — Git HTTP Server
 
-lugit - простой и лёгкий git http сервер написанный на php.
+lugit — простой и лёгкий Git HTTP сервер на PHP. Реализует smart HTTP protocol, управление репозиториями через CLI и API, встроенную CI/CD систему и базовый WEB интерфейс.
+
+---
+
+## Зависимости
+
+- **PHP 8.1+** (проверено на 8.4)
+- **Composer**
+- **Git**
+- PHP extensions: `curl`, `json`, `mbstring`, `fileinfo`, `dom`, `libxml`, `xml`, `xmlwriter`, `tokenizer`
+- **fastvolt/markdown** ^0.2.5 — рендеринг README (composer-зависимость)
+
+---
 
 ## Установка
+
 ```bash
 git clone https://github.com/lumetas/lugit.git
 cd lugit
 composer install
+chmod +x bin/lugit
 ```
 
+---
+
 ## Запуск
+
+**Для разработки** (встроенный сервер PHP):
 ```bash
 php -S localhost:8080 -t public
 ```
 
-## Настройка 
-скопируйте файл config.json.example в config.json и замените все поля на свои.
+**Для продакшена** через `router.php`:
+```bash
+php -S localhost:8080 router.php
+```
+Либо настройте любой веб-сервер (Apache/Nginx) на `public/index.php`.
 
-В поле repositoriesPath укажите путь к папке с bare репозиториями.
+---
 
-excludeFolders - список файлов и папок которые должны быть исключены из списка репозиториев.
+## Конфигурация
 
-enableRegister - включить регистрацию пользователей через консольный клиент.
+Скопируйте `config.json.example` в `config.json` и настройте под себя:
 
-Каждый пользователь может иметь поле `allow_cicd` (true/false). Если `allow_cicd: false`, пользователь может только просматривать логи CI/CD. По умолчанию (если поле отсутствует) — false. При регистрации через клиент (`lugit register`) пользователь создаётся с `allow_cicd: false`.
+```json
+{
+    "users": [],
+    "repositoriesPath": "/path/to/bare/repos",
+    "excludedFolders": ["test3"],
+    "enableRegister": false
+}
+```
 
-Зарегестрировать первого клиента:
+### Поля конфигурации
+
+| Поле | Описание |
+|------|----------|
+| `users` | Массив пользователей: `{ "username", "password" (sha256), "allow_cicd" (bool) }` |
+| `repositoriesPath` | Путь к папке с bare-репозиториями |
+| `excludedFolders` | Папки, исключённые из списка репозиториев |
+| `enableRegister` | Разрешить регистрацию через CLI (`lugit register`) |
+
+---
+
+## Первый пользователь
+
 ```bash
 php register.php
 ```
-Скрипт спросит username и password и зарегистрирует пользователя в системе.
+Скрипт создаст пользователя в `config.json`. Пароль хранится в виде SHA256-хэша.
 
-## Создание первого репозитория
-Авторизуемся в системе через консольный клиент:
-```bash
-./bin/lugit login http://localhost:8080 alice secret123
-``` 
+---
 
-Создаём новый репозиторий:
+## Команды CLI
+
+### Аутентификация
+
 ```bash
-./bin/lugit create my-project
+lugit login http://localhost:8080 <username> <password>
+lugit logout
+lugit whoami
+lugit set-server http://localhost:8080
+lugit changepass <new-password>
+lugit register http://localhost:8080 <username> <password>   # если enableRegister: true
 ```
 
-После создания репозитория вы можете получить его git адрес через консольный клиент:
+### Репозитории
+
 ```bash
-./bin/lugit info my-project
+lugit list                              # список репозиториев
+lugit create my-project                 # создать bare-репозиторий
+lugit info my-project                   # информация о репозитории
+lugit delete my-project                 # удалить репозиторий
+lugit set-public my-project             # сделать публичным
+lugit set-private my-project            # сделать приватным
 ```
 
-Пользователи могут добавляться в репозитории через консольный клиент:
+### Управление доступом
+
 ```bash
-./bin/lugit user-add my-project bob
+lugit user-add my-project bob           # добавить пользователя
+lugit user-remove my-project bob        # удалить пользователя
+lugit user-list my-project              # список пользователей
 ```
+
+---
+
+## Права доступа
+
+- **Приватные репозитории** (по умолчанию) — доступ только у авторизованных пользователей из `allowedUsers`
+- **Публичные репозитории** — clone доступен без аутентификации, **push требует аутентификации и прав доступа**
+- `/repos/{name}` на WEB странице отображается только для публичных репозиториев
+
+---
 
 ## CI/CD
 
-lugit имеет встроенную систему CI/CD. Вы можете загрузить любой исполнительный скрипт на сервер, и он будет автоматически запускаться при пуше в указанную ветку.
+lugit имеет встроенную CI/CD. Хуки привязываются к ветке **по точному совпадению имени** (без wildcard-ов).
 
 ### Команды
 
-**Установка хука:**
 ```bash
-lugit cicd-set <репозиторий> <ветка> <путь/к/скрипту>
+lugit cicd-set <repo> <branch> <script>        # установить хук
+lugit cicd-del <repo> <branch>                 # удалить хук
+lugit cicd-list <repo>                         # список хуков
+lugit cicd-run <repo> <branch>                 # ручной запуск
+lugit cicd-logs <repo> <branch>               # просмотр логов
+lugit cicd-logs-clean <repo> <branch>         # очистка логов
 ```
 
-Загружает скрипт на сервер. Скрипт сохраняется в `lugit/hooks/<ветка>` внутри bare репозитория и автоматически запускается при пуше в эту ветку.
+### Как работает
 
-Пример:
-```bash
-lugit cicd-set my-project main ./deploy.sh
-```
+1. Хук сохраняется в `<repo>/lugit/hooks/<branch>` и делается исполнимым
+2. В bare-репозиторий устанавливается `hooks/post-receive`
+3. При пуше post-receive читает `refname`, извлекает имя ветки, ищет файл `<repo>/lugit/hooks/<branch>`
+4. **Важно:** хук на `main` НЕ сработает при пуше в `feature/xyz`. Только exact-match по имени ветки
+5. Выполнение асинхронное, через `nohup`
+6. Вывод сохраняется в `<repo>/lugit/logs/<branch>`
 
-**Удаление хука:**
-```bash
-lugit cicd-del <репозиторий> <ветка>
-```
+### Права CI/CD
 
-**Список хуков:**
-```bash
-lugit cicd-list <репозиторий>
-```
+- `allow_cicd: true` — полное управление хуками (set, del, run, list) + просмотр логов
+- `allow_cicd: false` — только просмотр логов (`cicd-logs`)
+- При регистрации через CLI (`lugit register`) новый пользователь получает `allow_cicd: false`
 
-**Ручной запуск:**
-```bash
-lugit cicd-run <репозиторий> <ветка>
-```
-
-Запускает хук вручную без пуша.
-
-**Просмотр логов:**
-```bash
-lugit cicd-logs <репозиторий> <ветка>
-```
-
-Показывает логи выполнения хука для указанной ветки. Доступно всем пользователям, имеющим доступ к репозиторию (даже без `allow_cicd`).
-
-Пример:
-```bash
-lugit cicd-logs my-project main
-```
-
-**Очистка логов:**
-```bash
-lugit cicd-logs-clean <репозиторий> <ветка>
-```
-
-Очищает файл лога для указанной ветки.
-
-Пример:
-```bash
-lugit cicd-logs-clean my-project main
-```
-
-### Как это работает
-
-1. При установке хука (`cicd-set`) скрипт сохраняется в `<repo>/lugit/hooks/<branch>` и делается исполнимым.
-2. В bare репозиторий устанавливается `hooks/post-receive`, который автоматически запускает нужный скрипт при пуше.
-3. При пуше git receive-pack запускает post-receive hook, тот определяет ветку, находит соответствующий скрипт в `lugit/hooks/`, и запускает его асинхронно (через nohup).
-4. Вывод скрипта сохраняется в `<repo>/lugit/logs/<branch>`.
-5. При ручном запуске (`cicd-run`) скрипт запускается так же асинхронно.
-
-### Права доступа
-
-- `allow_cicd: true` — пользователь может управлять хуками (set, del, run, list) и просматривать логи.
-- `allow_cicd: false` — пользователь может только просматривать логи (`cicd-logs`).
-- При включённой регистрации новые пользователи получают `allow_cicd: false`.
+---
 
 ## WEB интерфейс
-Скорее можно сказать что отсутствует, есть одна страница /repos/{repoName} на которой отображается ссылка для клонирования репозитория и его README.md если он есть и репозиторий является публичным.
 
-## Права доступа
-Репозитории могут быть публичными или приватными, по умолчанию репозитории считаются приватными. Чтобы это изменить можно сделать так:
-```bash
-./bin/lugit set-public my-project
+Репозиторий доступен по адресу `/repos/{name}`.
+
+- **Публичный** — страница с README, ссылкой для клонирования, списком участников
+- **Приватный** — страница с сообщением "Private Repository"
+- README парсится из `README.md` в корне репозитория
+
+---
+
+## API endpoints
+
+Все API (`/api/v1/*`) возвращают JSON. Аутентификация — Basic Auth.
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| GET | `/api/v1/repos` | Список репозиториев |
+| GET | `/api/v1/repos/{name}` | Информация о репозитории |
+| POST | `/api/v1/repos/{name}` | Создать репозиторий |
+| DELETE | `/api/v1/repos/{name}` | Удалить репозиторий |
+| GET | `/api/v1/repos/{name}/users` | Список пользователей |
+| POST | `/api/v1/repos/{name}/users/{user}` | Добавить пользователя |
+| DELETE | `/api/v1/repos/{name}/users/{user}` | Удалить пользователя |
+| PUT | `/api/v1/repos/{name}/public` | Сделать публичным |
+| PUT | `/api/v1/repos/{name}/private` | Сделать приватным |
+| POST | `/api/v1/login` | Логин |
+| GET | `/api/v1/user` | Текущий пользователь |
+| POST | `/api/v1/register` | Регистрация |
+| POST | `/api/v1/changepass` | Смена пароля |
+| GET | `/api/v1/repos/{name}/cicd` | Список CI/CD хуков |
+| POST | `/api/v1/repos/{name}/cicd/{branch}` | Установить хук |
+| DELETE | `/api/v1/repos/{name}/cicd/{branch}` | Удалить хук |
+| POST | `/api/v1/repos/{name}/cicd/{branch}/run` | Запустить хук |
+| GET | `/api/v1/repos/{name}/cicd/logs/{branch}` | Логи хука |
+| DELETE | `/api/v1/repos/{name}/cicd/logs/{branch}` | Очистить логи |
+
+Также реализован [Git Smart HTTP Protocol](https://git-scm.com/docs/http-protocol) по путям `/{repo}` и `/repos/{repo}`.
+
+---
+
+## Структура проекта
+
 ```
-После этого даже не авторизованные пользователи смогут склонировать репозиторий через git. А вы можете отправить им ссылку.
-
-И наоборот:
-```bash
-./bin/lugit set-private my-project
+lugit/
+├── bin/lugit              # CLI клиент
+├── public/index.php       # точка входа
+├── router.php             # для production-запуска
+├── register.php           # скрипт регистрации
+├── config.json            # конфигурация
+├── config.json.example    # пример конфигурации
+├── composer.json
+├── src/
+│   ├── Auth.php           # аутентификация
+│   ├── Config.php         # работа с конфигом
+│   ├── GitApi.php         # REST API
+│   ├── GitHttpServer.php  # Git Smart HTTP протокол
+│   ├── Markdown.php       # рендеринг Markdown
+│   ├── RepoConfig.php     # конфиг репозитория
+│   ├── RepoPage.php       # WEB страница репозитория
+│   └── Utils.php          # вспомогательные функции
+└── repos/                 # bare-репозитории
 ```
-
-
-Скриншот веб интерфейса:
-![lugit-screenshot](img/lugit.png)

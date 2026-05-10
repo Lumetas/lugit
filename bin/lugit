@@ -339,9 +339,14 @@ class Cli
 
 		try {
 			$response = self::request('GET', '/user');
-			self::saveCredentials();
-			self::printSuccess("Logged in as: {$response['username']}");
-			echo "Server: " . self::$serverUrl . "\n";
+			if ($response['username']) {
+				self::saveCredentials();
+				self::printSuccess("Logged in as: {$response['username']}");
+				echo "Server: " . self::$serverUrl . "\n";
+			} else {
+				self::printError("Login failed: Invalid credentials");
+				exit(1);
+			}
 		} catch (\Throwable $e) {
 			self::$credentials = null;
 			self::printError("Login failed: " . $e->getMessage());

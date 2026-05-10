@@ -10,11 +10,7 @@ $password = readline("Password: ");
 $password2 = readline("Confirm password: ");
 $cicd = readline("Enable CI/CD permissions (y/n): ");
 
-if ($cicd !== 'y') {
-	$cicd = false;
-} else {
-	$cicd = true;
-}
+$allowCicd = $cicd === 'y';
 
 if ($password !== $password2) {
 	echo "Passwords do not match\n";
@@ -32,7 +28,7 @@ foreach ($users as $user) {
 $users[] = [
 	'username' => $username,
 	'password' => hash('sha256', $password),
-	'allow_cicd' => $cicd
+	'allow_cicd' => $allowCicd
 ];
 
 Config::setUsers($users);

@@ -3,10 +3,6 @@
 namespace Lugit;
 
 require_once __DIR__ . '/../vendor/autoload.php';
-/* require_once __DIR__ . '/../src/Utils.php'; */
-/* require_once __DIR__ . '/../src/GitHttpServer.php'; */
-/* require_once __DIR__ . '/../src/GitApi.php'; */
-/* require_once __DIR__ . '/../src/RepoPage.php'; */
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 
