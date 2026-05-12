@@ -38,7 +38,7 @@ class Auth
 
 		foreach ($users as $user) {
 			if ($user['username'] === $username) {
-				if ($user['password'] === hash('sha256', $password)) {
+				if (Password::verify($password, $user['password'])) {
 					return ['username' => $username];
 				}
 			}

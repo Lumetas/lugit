@@ -203,7 +203,7 @@ class GitHttpServer
 				$users = Config::getUsers();
 				foreach ($users as $u) {
 					if ($u['username'] === $username) {
-						if ($u['password'] === hash('sha256', $password)) {
+						if (Password::verify($password, $u['password'])) {
 							$this->currentUser = ['username' => $username];
 							return true;
 						}

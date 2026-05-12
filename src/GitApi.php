@@ -153,8 +153,8 @@ class GitApi
 		$users = Config::getUsers();
 		foreach ($users as &$u) {
 			if ($u['username'] === $username) {
-				if ($u['password'] === hash('sha256', $password)) {
-					$u['password'] = hash('sha256', $newPassword);
+				if (Password::verify($password, $u['password'])) {
+					$u['password'] = Password::hash($newPassword);
 					Config::setUsers($users);
 					Config::save();
 					$this->sendJson(['message' => "Password changed"]);
@@ -175,7 +175,7 @@ class GitApi
 			if ($credentials && str_contains($credentials, ':')) {
 				[$username, $password] = explode(':', $credentials, 2);
 				$user = Config::getUser($username);
-				if ($user !== null && $user['password'] === hash('sha256', $password)) {
+				if ($user !== null && Password::verify($password, $user['password'])) {
 					$this->currentUser = $user;
 					return;
 				}
@@ -211,7 +211,7 @@ class GitApi
 
 		$users[] = [
 			'username' => $username,
-			'password' => hash('sha256', $password),
+			'password' => Password::hash($password),
 			'allow_cicd' => false
 		];
 
@@ -258,7 +258,7 @@ class GitApi
 
 		$users = Config::getUsers();
 		foreach ($users as $u) {
-			if ($u['username'] === $username && $u['password'] === hash('sha256', $password)) {
+			if ($u['username'] === $username && Password::verify($password, $u['password'])) {
 				$this->sendJson(['username' => $username]);
 				return;
 			}
@@ -276,7 +276,7 @@ class GitApi
 			if ($credentials && str_contains($credentials, ':')) {
 				[$username, $password] = explode(':', $credentials, 2);
 				$user = Config::getUser($username);
-				if ($user !== null && $user['password'] === hash('sha256', $password)) {
+				if ($user !== null && Password::verify($password, $user['password'])) {
 					$this->sendJson(['username' => $username]);
 					return;
 				}

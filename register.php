@@ -4,6 +4,7 @@
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Lugit\Config;
+use Lugit\Password;
 
 $username = readline("Username: ");
 $password = readline("Password: ");
@@ -27,7 +28,7 @@ foreach ($users as $user) {
 }
 $users[] = [
 	'username' => $username,
-	'password' => hash('sha256', $password),
+	'password' => Password::hash($password),
 	'allow_cicd' => $allowCicd
 ];
 
