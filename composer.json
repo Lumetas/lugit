@@ -12,6 +12,6 @@
     ],
     "require": {
         "fastvolt/markdown": "^0.2.5",
-        "bmnd/core": "^0.0.4"
+        "bmnd/core": "^0.0.5"
     }
 }
