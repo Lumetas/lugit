@@ -16,31 +16,18 @@ class GitHttpServer
 		$this->excludedFolders = Config::getExcludedFolders();
 	}
 
-	public function handle(): void
+	public function checkRepoAndUser(string $username, string $repoName): bool|string
 	{
-		$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-		$method = $_SERVER['REQUEST_METHOD'];
-
-		if (preg_match('#^/?([^/]+)/([^/]+)(/.*)?$#', $path, $matches)) {
-			$username = $matches[1];
-			$repoName = $matches[2];
-			$action = $matches[3] ?? '/info/refs';
-		} else {
-			error_log("Invalid path: $path");
-			$this->sendError(400, "Invalid path");
-			return;
-		}
-
-		error_log("User: $username, Repo: $repoName, Action: $action");
+		error_log("User: $username, Repo: $repoName");
 
 		if (!Utils::isValidUsername($username) || !Utils::isValidRepoName($repoName)) {
 			$this->sendError(404, "Repository not found");
-			return;
+			return false;
 		}
 
 		if (in_array($username, $this->excludedFolders) || in_array($repoName, $this->excludedFolders)) {
 			$this->sendError(404, "Repository not found");
-			return;
+			return false;
 		}
 
 		if (RepoCache::hasRepo($username, $repoName)) {
@@ -49,27 +36,29 @@ class GitHttpServer
 			$repoPath = Utils::findRepoPath($username, $repoName);
 			if ($repoPath === null) {
 				$this->sendError(404, "Repository not found");
-				return;
+				return false;
 			}
 		}
 
 		if (!Utils::isGitRepo($repoPath)) {
 			$this->sendError(404, "Repository not found");
-			return;
+			return false;
 		}
 
-		if (str_starts_with($action, '/info/refs')) {
-			$this->handleInfoRefs($repoPath, $action);
-		} elseif (str_starts_with($action, '/git-upload-pack')) {
-			$this->handleUploadPack($repoPath);
-		} elseif (str_starts_with($action, '/git-receive-pack')) {
-			$this->handleReceivePack($repoPath);
-		} else {
-			$this->sendError(400, "Unknown service");
-		}
+		return $repoPath;
+
+		/* if (str_starts_with($action, '/info/refs')) { */
+		/* 	$this->handleInfoRefs($repoPath, $action); */
+		/* } elseif (str_starts_with($action, '/git-upload-pack')) { */
+		/* 	$this->handleUploadPack($repoPath); */
+		/* } elseif (str_starts_with($action, '/git-receive-pack')) { */
+		/* 	$this->handleReceivePack($repoPath); */
+		/* } else { */
+		/* 	$this->sendError(400, "Unknown service"); */
+		/* } */
 	}
 
-	private function handleInfoRefs(string $repoPath, string $action): void
+	public function handleInfoRefs(string $repoPath): void
 	{
 		$service = $_GET['service'] ?? null;
 
@@ -127,7 +116,7 @@ class GitHttpServer
 		echo $refs;
 	}
 
-	private function handleUploadPack(string $repoPath): void
+	public function handleUploadPack(string $repoPath): void
 	{
 		$repoConfig = RepoConfig::load($repoPath);
 
@@ -148,7 +137,7 @@ class GitHttpServer
 		$this->handleGitRpc($repoPath, 'upload-pack');
 	}
 
-	private function handleReceivePack(string $repoPath): void
+	public function handleReceivePack(string $repoPath): void
 	{
 		$repoConfig = RepoConfig::load($repoPath);
 
@@ -228,7 +217,7 @@ class GitHttpServer
 		return false;
 	}
 
-	private function sendError(int $code, string $message): void
+	public function sendError(int $code, string $message): void
 	{
 		if ($code == 401) {
 			header('WWW-Authenticate: Basic realm="Git Server"');

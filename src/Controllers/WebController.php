@@ -15,4 +15,9 @@ class WebController {
 	public function repo(string $user, string $repo, RepoPage $page) :void {
 		$page->handle($user, $repo);
 	}
+
+	#[Route('/{user}')]
+	public function user(string $user, RepoPage $page) :void {
+		$page->handleUserProfile($user);
+	}
 }
