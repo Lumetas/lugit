@@ -16,17 +16,12 @@ class GitController
 	#[Route('/info/refs')]
 	public function infoRefs(string $user, string $repo): void
 	{
-
-
 		$repoPath = $this->api->checkRepoAndUser($user, $repo);
 		if ($repoPath === false) {
 			$this->api->sendError(404, "Repository not found");
 		}
-
 		$this->api->handleInfoRefs($repoPath);
 	}
-
-
 
 	#[Route('/git-upload-pack', method: 'POST')]
 	public function uploadPack(string $user, string $repo): void
@@ -35,7 +30,6 @@ class GitController
 		if ($repoPath === false) {
 			$this->api->sendError(404, "Repository not found");
 		}
-
 		$this->api->handleUploadPack($repoPath);
 	}
 
