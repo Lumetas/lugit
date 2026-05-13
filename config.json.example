@@ -6,5 +6,6 @@
 		"test3"
 	],
 	"enableRegister": false,
-	"allow_cicd_default": false
+	"allow_cicd_default": false,
+	"routesCache": false,
 }

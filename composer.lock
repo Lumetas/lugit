@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "a7191b81aceb2a8bd905a8a82540dcd8",
+    "content-hash": "b267486651aa7b5d213e5899faad2537",
     "packages": [
         {
             "name": "bmnd/core",
-            "version": "v0.0.3",
+            "version": "v0.0.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Lumetas/bmnd.git",
-                "reference": "f5c6ee086bb676e23600aca94bf03799d2b316bc"
+                "reference": "2c4dc403da1f6782c863e5832338ff7b71d1964b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Lumetas/bmnd/zipball/f5c6ee086bb676e23600aca94bf03799d2b316bc",
-                "reference": "f5c6ee086bb676e23600aca94bf03799d2b316bc",
+                "url": "https://api.github.com/repos/Lumetas/bmnd/zipball/2c4dc403da1f6782c863e5832338ff7b71d1964b",
+                "reference": "2c4dc403da1f6782c863e5832338ff7b71d1964b",
                 "shasum": ""
             },
             "require": {
@@ -38,9 +38,9 @@
             ],
             "support": {
                 "issues": "https://github.com/Lumetas/bmnd/issues",
-                "source": "https://github.com/Lumetas/bmnd/tree/v0.0.3"
+                "source": "https://github.com/Lumetas/bmnd/tree/v0.0.4"
             },
-            "time": "2025-12-17T10:56:39+00:00"
+            "time": "2026-05-13T10:30:27+00:00"
         },
         {
             "name": "fastvolt/markdown",
