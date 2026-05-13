@@ -430,6 +430,114 @@ HTML;
         return 'main';
     }
 
+    public function handleUserProfile(string $username): void {
+        Config::init(dirname(__DIR__) . '/config.json');
+        $this->basePath = Config::getRepositoriesPath();
+        $this->excludedFolders = Config::getExcludedFolders();
+
+        if (in_array($username, $this->excludedFolders)) {
+            $this->sendError(404, "User not found");
+            return;
+        }
+
+        $basePath = Config::getRepositoriesPath();
+        $repoPath = $basePath . '/' . $username . '/' . $username;
+
+        if (!Utils::isGitRepo($repoPath)) {
+            $this->sendError(404, "Repository not found");
+            return;
+        }
+
+        $config = RepoConfig::load($repoPath);
+        
+        $readme = $this->getReadme($repoPath);
+        if (!$readme) {
+            $this->sendError(404, "README not found");
+            return;
+        }
+
+        $readmeHtml = (new \FastVolt\Helper\Markdown())->setContent($readme)->getHtml();
+
+        echo <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{$username}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .readme-section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 40px;
+        }
+        .markdown-body {
+            color: #c9d1d9;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+            color: #f0f6fc;
+            margin: 20px 0 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #30363d;
+        }
+        .markdown-body h1 { font-size: 2rem; }
+        .markdown-body h2 { font-size: 1.5rem; }
+        .markdown-body h3 { font-size: 1.25rem; }
+        .markdown-body p { margin: 10px 0; }
+        .markdown-body a { color: #58a6ff; text-decoration: none; }
+        .markdown-body a:hover { text-decoration: underline; }
+        .markdown-body code {
+            background: #0d1117;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 0.9em;
+        }
+        .markdown-body pre {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+        .markdown-body pre code {
+            background: none;
+            padding: 0;
+        }
+        .markdown-body ul {
+            list-style: disc;
+            margin-left: 25px;
+            margin: 10px 0;
+        }
+        .markdown-body li { margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="readme-section">
+            <div class="markdown-body">{$readmeHtml}</div>
+        </div>
+    </div>
+</body>
+</html>
+HTML;
+    }
+
     private function sendError(int $code, string $message): void {
         http_response_code($code);
         echo <<<HTML

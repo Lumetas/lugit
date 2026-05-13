@@ -5,7 +5,6 @@ namespace Lugit;
 require_once __DIR__ . '/../vendor/autoload.php';
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-$query = $_SERVER['QUERY_STRING'] ?? '';
 
 if ($path === '/' || $path === '') {
 	readfile(__DIR__ . '/../src/static/index.html');
@@ -28,6 +27,16 @@ if ($path === '/' || $path === '') {
     } else {
         $page = new RepoPage();
         $page->handle();
+    }
+} elseif (preg_match('#^/?([^/]+)/?$#', $path, $matches)) {
+    $username = $matches[1];
+    
+    if (str_contains($path, '/info/') || str_contains($path, '/git-')) {
+        $server = new GitHttpServer();
+        $server->handle();
+    } else {
+        $page = new RepoPage();
+        $page->handleUserProfile($username);
     }
 } else {
     $server = new GitHttpServer();
