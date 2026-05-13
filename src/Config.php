@@ -39,6 +39,10 @@ class Config {
         return $value;
     }
 
+    public static function getCacheFile(): string {
+        return self::get('cacheFile', dirname(__DIR__) . '/repo.cache');
+    }
+
     public static function getRepositoriesPath(): string {
         return self::get('repositoriesPath', dirname(__DIR__) . '/repos');
     }

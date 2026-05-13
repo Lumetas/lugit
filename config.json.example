@@ -1,6 +1,7 @@
 {
 	"users": [],
 	"repositoriesPath": "path/to/folder",
+	"cacheFile": "path/to/cache/file",
 	"excludedFolders" : [
 		"test3"
 	],

@@ -17,7 +17,7 @@ if ($path === '/' || $path === '') {
 } elseif (str_starts_with($path, '/api/')) {
     $api = new GitApi();
     $api->handle();
-} elseif (preg_match('#^/?repos/([^/]+)/?$#', $path, $matches) && !str_contains($path, '/info/') && !str_contains($path, '/git-')) {
+} elseif (preg_match('#^/?repos/([^/]+)/([^/]+)/?$#', $path, $matches) && !str_contains($path, '/info/') && !str_contains($path, '/git-')) {
     $page = new RepoPage();
     $page->handle();
 } else {

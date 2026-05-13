@@ -11,6 +11,7 @@ class GitApi
 	public function __construct()
 	{
 		Config::init(dirname(__DIR__) . '/config.json');
+		RepoCache::init(Config::getCacheFile());
 		$this->basePath = Config::getRepositoriesPath();
 		$this->excludedFolders = Config::getExcludedFolders();
 	}
@@ -28,82 +29,90 @@ class GitApi
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
-		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/?$#', $path, $matches)) {
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/([^/]+)/?$#', $path, $matches)) {
 			$this->authenticate();
-			$repoName = $matches[1];
+			$username = $matches[1];
+			$repoName = $matches[2];
 			if ($method === 'GET') {
-				$this->getRepo($repoName);
+				$this->getRepo($username, $repoName);
 			} elseif ($method === 'POST') {
-				$this->createRepo($repoName);
+				$this->createRepo($username, $repoName);
 			} elseif ($method === 'DELETE') {
-				$this->deleteRepo($repoName);
+				$this->deleteRepo($username, $repoName);
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
-		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/users/?$#', $path, $matches)) {
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/([^/]+)/users/?$#', $path, $matches)) {
 			$this->authenticate();
-			$repoName = $matches[1];
+			$username = $matches[1];
+			$repoName = $matches[2];
 			if ($method === 'GET') {
-				$this->listUsers($repoName);
+				$this->listUsers($username, $repoName);
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
-		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/users/([^/]+)/?$#', $path, $matches)) {
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/([^/]+)/users/([^/]+)/?$#', $path, $matches)) {
 			$this->authenticate();
-			$repoName = $matches[1];
-			$username = $matches[2];
+			$username = $matches[1];
+			$repoName = $matches[2];
+			$targetUser = $matches[3];
 			if ($method === 'POST') {
-				$this->addUser($repoName, $username);
+				$this->addUser($username, $repoName, $targetUser);
 			} elseif ($method === 'DELETE') {
-				$this->removeUser($repoName, $username);
+				$this->removeUser($username, $repoName, $targetUser);
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
-		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/(public|private)/?$#', $path, $matches)) {
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/([^/]+)/(public|private)/?$#', $path, $matches)) {
 			$this->authenticate();
-			$repoName = $matches[1];
-			$visibility = $matches[2];
+			$username = $matches[1];
+			$repoName = $matches[2];
+			$visibility = $matches[3];
 			if ($method === 'PUT') {
-				$this->setVisibility($repoName, $visibility === 'public');
+				$this->setVisibility($username, $repoName, $visibility === 'public');
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
-		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/cicd/logs/([^/]+)/?$#', $path, $matches)) {
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/([^/]+)/cicd/logs/([^/]+)/?$#', $path, $matches)) {
 			$this->authenticate();
-			$repoName = $matches[1];
-			$branch = urldecode($matches[2]);
+			$username = $matches[1];
+			$repoName = $matches[2];
+			$branch = urldecode($matches[3]);
 			if ($method === 'GET') {
-				$this->cicdGetLogs($repoName, $branch);
+				$this->cicdGetLogs($username, $repoName, $branch);
 			} elseif ($method === 'DELETE') {
-				$this->cicdCleanLogs($repoName, $branch);
+				$this->cicdCleanLogs($username, $repoName, $branch);
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
-		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/cicd/([^/]+)/run/?$#', $path, $matches)) {
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/([^/]+)/cicd/([^/]+)/run/?$#', $path, $matches)) {
 			$this->authenticate();
-			$repoName = $matches[1];
-			$branch = urldecode($matches[2]);
+			$username = $matches[1];
+			$repoName = $matches[2];
+			$branch = urldecode($matches[3]);
 			if ($method === 'POST') {
-				$this->cicdRunHook($repoName, $branch);
+				$this->cicdRunHook($username, $repoName, $branch);
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
-		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/cicd/([^/]+)/?$#', $path, $matches)) {
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/([^/]+)/cicd/([^/]+)/?$#', $path, $matches)) {
 			$this->authenticate();
-			$repoName = $matches[1];
-			$branch = urldecode($matches[2]);
+			$username = $matches[1];
+			$repoName = $matches[2];
+			$branch = urldecode($matches[3]);
 			if ($method === 'POST') {
-				$this->cicdSetHook($repoName, $branch);
+				$this->cicdSetHook($username, $repoName, $branch);
 			} elseif ($method === 'DELETE') {
-				$this->cicdDelHook($repoName, $branch);
+				$this->cicdDelHook($username, $repoName, $branch);
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
-		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/cicd/?$#', $path, $matches)) {
+		} elseif (preg_match('#^/?api/v1/repos/([^/]+)/([^/]+)/cicd/?$#', $path, $matches)) {
 			$this->authenticate();
-			$repoName = $matches[1];
+			$username = $matches[1];
+			$repoName = $matches[2];
 			if ($method === 'GET') {
-				$this->cicdListHooks($repoName);
+				$this->cicdListHooks($username, $repoName);
 			} else {
 				$this->sendError(405, "Method not allowed");
 			}
@@ -135,7 +144,6 @@ class GitApi
 			$this->sendError(404, "Not found");
 		}
 	}
-
 
 
 
@@ -221,13 +229,21 @@ class GitApi
 		$this->sendJson(['message' => 'User registered successfully'], 201);
 	}
 
-	private function getRepoConfig(string $name): ?RepoConfig
+	private function getRepoConfig(string $username, string $repoName): ?RepoConfig
 	{
-		if (in_array($name, $this->excludedFolders)) {
+		if (in_array($username, $this->excludedFolders) || in_array($repoName, $this->excludedFolders)) {
 			return null;
 		}
 
-		$repoPath = $this->basePath . '/' . $name;
+		if (RepoCache::hasRepo($username, $repoName)) {
+			$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
+		} else {
+			$repoPath = Utils::findRepoPath($username, $repoName);
+			if ($repoPath === null) {
+				return null;
+			}
+		}
+
 		if (!Utils::isGitRepo($repoPath)) {
 			return null;
 		}
@@ -235,15 +251,16 @@ class GitApi
 		return RepoConfig::load($repoPath);
 	}
 
-	private function checkRepoAccess(string $name): void
+	private function checkRepoAccess(string $username, string $repoName): ?RepoConfig
 	{
-		$config = $this->getRepoConfig($name);
+		$config = $this->getRepoConfig($username, $repoName);
 		if ($config === null) {
 			$this->sendError(404, "Repository not found");
 		}
 		if (!$config->hasUser($this->currentUser['username'])) {
 			$this->sendError(403, "Access denied");
 		}
+		return $config;
 	}
 
 	private function login(): void
@@ -288,28 +305,30 @@ class GitApi
 
 	private function listRepos(): void
 	{
-		$repos = Utils::listRepositories();
+		$cache = RepoCache::getAll();
+		$currentUser = $this->currentUser['username'];
 		$result = [];
 
-		foreach ($repos as $repoName) {
-			$repoPath = $this->basePath . '/' . $repoName;
-			$config = RepoConfig::load($repoPath);
-			if (!$config->hasUser($this->currentUser['username'])) {
-				continue;
+		foreach ($cache as $username => $repos) {
+			foreach ($repos as $repoName => $config) {
+				if (!$config['allowedUsers'] || !in_array($currentUser, $config['allowedUsers'])) {
+					continue;
+				}
+				$result[] = [
+					'username' => $username,
+					'name' => $repoName,
+					'public' => $config['public'],
+					'allowedUsers' => $config['allowedUsers']
+				];
 			}
-			$result[] = [
-				'name' => $repoName,
-				'public' => $config->public,
-				'allowedUsers' => $config->allowedUsers
-			];
 		}
 
 		$this->sendJson($result);
 	}
 
-	private function getRepo(string $name): void
+	private function getRepo(string $username, string $repoName): void
 	{
-		$config = $this->getRepoConfig($name);
+		$config = $this->getRepoConfig($username, $repoName);
 		if ($config === null) {
 			$this->sendError(404, "Repository not found");
 		}
@@ -317,21 +336,26 @@ class GitApi
 			$this->sendError(403, "Access denied");
 		}
 		$this->sendJson([
-			'name' => $name,
+			'username' => $username,
+			'name' => $repoName,
 			'public' => $config->public,
 			'allowedUsers' => $config->allowedUsers
 		]);
 	}
 
-	private function createRepo(string $name): void
+	private function createRepo(string $username, string $repoName): void
 	{
-		if (!Utils::isValidRepoName($name)) {
-			$this->sendError(400, "Invalid repository name");
+		if (!Utils::isValidUsername($username) || !Utils::isValidRepoName($repoName)) {
+			$this->sendError(400, "Invalid username or repository name");
 		}
 
-		$repoPath = $this->basePath . '/' . $name;
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		if (is_dir($repoPath)) {
 			$this->sendError(409, "Repository already exists");
+		}
+
+		if (!is_dir($this->basePath . '/' . $username)) {
+			mkdir($this->basePath . '/' . $username, 0755, true);
 		}
 
 		Utils::createBareRepo($repoPath);
@@ -342,78 +366,98 @@ class GitApi
 		);
 		$config->save($repoPath);
 
+		RepoCache::addRepo($username, $repoName, [
+			'public' => $config->public,
+			'allowedUsers' => $config->allowedUsers
+		]);
+
 		$this->sendJson([
-			'name' => $name,
+			'username' => $username,
+			'name' => $repoName,
 			'public' => false,
 			'allowedUsers' => [$this->currentUser['username']]
 		], 201);
 	}
 
-	private function deleteRepo(string $name): void
+	private function deleteRepo(string $username, string $repoName): void
 	{
-		$this->checkRepoAccess($name);
-		$repoPath = $this->basePath . '/' . $name;
+		$this->checkRepoAccess($username, $repoName);
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		Utils::deleteRepo($repoPath);
-		$this->sendJson(['message' => "Repository '$name' deleted"]);
+		RepoCache::removeRepo($username, $repoName);
+		$this->sendJson(['message' => "Repository '$username/$repoName' deleted"]);
 	}
 
-	private function listUsers(string $name): void
+	private function listUsers(string $username, string $repoName): void
 	{
-		$this->checkRepoAccess($name);
-		$repoPath = $this->basePath . '/' . $name;
+		$this->checkRepoAccess($username, $repoName);
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		$config = RepoConfig::load($repoPath);
 		$this->sendJson($config->allowedUsers);
 	}
 
-	private function addUser(string $name, string $username): void
+	private function addUser(string $username, string $repoName, string $targetUser): void
 	{
-		$this->checkRepoAccess($name);
-		$repoPath = $this->basePath . '/' . $name;
+		$this->checkRepoAccess($username, $repoName);
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		$config = RepoConfig::load($repoPath);
 
-		if ($config->hasUser($username)) {
-			$this->sendJson(['message' => "User '$username' already has access"]);
+		if ($config->hasUser($targetUser)) {
+			$this->sendJson(['message' => "User '$targetUser' already has access"]);
 		}
 
-		$config->addUser($username);
+		$config->addUser($targetUser);
 		$config->save($repoPath);
 
-		$this->sendJson(['message' => "User '$username' added to '$name'"]);
+		RepoCache::updateRepo($username, $repoName, [
+			'allowedUsers' => $config->allowedUsers
+		]);
+
+		$this->sendJson(['message' => "User '$targetUser' added to '$repoName'"]);
 	}
 
-	private function removeUser(string $name, string $username): void
+	private function removeUser(string $username, string $repoName, string $targetUser): void
 	{
-		$this->checkRepoAccess($name);
-		$repoPath = $this->basePath . '/' . $name;
+		$this->checkRepoAccess($username, $repoName);
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		$config = RepoConfig::load($repoPath);
 
-		if (!$config->hasUser($username)) {
+		if (!$config->hasUser($targetUser)) {
 			$this->sendError(404, "User not found");
 		}
 
-		if ($username === $this->currentUser['username']) {
+		if ($targetUser === $this->currentUser['username']) {
 			$this->sendError(400, "Cannot remove yourself");
 		}
 
-		$config->removeUser($username);
+		$config->removeUser($targetUser);
 		$config->save($repoPath);
 
-		$this->sendJson(['message' => "User '$username' removed from '$name'"]);
+		RepoCache::updateRepo($username, $repoName, [
+			'allowedUsers' => $config->allowedUsers
+		]);
+
+		$this->sendJson(['message' => "User '$targetUser' removed from '$repoName'"]);
 	}
 
-	private function setVisibility(string $name, bool $public): void
+	private function setVisibility(string $username, string $repoName, bool $public): void
 	{
-		$this->checkRepoAccess($name);
-		$repoPath = $this->basePath . '/' . $name;
+		$this->checkRepoAccess($username, $repoName);
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		$config = RepoConfig::load($repoPath);
 
 		$config->public = $public;
 		$config->save($repoPath);
 
+		RepoCache::updateRepo($username, $repoName, [
+			'public' => $public
+		]);
+
 		$this->sendJson([
-			'name' => $name,
+			'username' => $username,
+			'name' => $repoName,
 			'public' => $public,
-			'message' => "Repository '$name' is now " . ($public ? 'public' : 'private')
+			'message' => "Repository '$repoName' is now " . ($public ? 'public' : 'private')
 		]);
 	}
 
@@ -473,12 +517,12 @@ HOOK;
 		chmod($hookPath, 0755);
 	}
 
-	private function cicdListHooks(string $repoName): void
+	private function cicdListHooks(string $username, string $repoName): void
 	{
-		$this->checkRepoAccess($repoName);
+		$this->checkRepoAccess($username, $repoName);
 		$this->requireCicdAccess();
 
-		$repoPath = $this->basePath . '/' . $repoName;
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		$hooksDir = $repoPath . '/lugit/hooks';
 
 		$hooks = [];
@@ -493,9 +537,9 @@ HOOK;
 		$this->sendJson(['hooks' => $hooks]);
 	}
 
-	private function cicdSetHook(string $repoName, string $branch): void
+	private function cicdSetHook(string $username, string $repoName, string $branch): void
 	{
-		$this->checkRepoAccess($repoName);
+		$this->checkRepoAccess($username, $repoName);
 		$this->requireCicdAccess();
 		if (str_contains($branch, '..')) {
 			$this->sendError(400, "Invalid branch name");
@@ -513,7 +557,7 @@ HOOK;
 			$this->sendError(400, "Invalid base64 encoding");
 		}
 
-		$repoPath = $this->basePath . '/' . $repoName;
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		$this->ensureLugitDirs($repoPath);
 
 		$hookFile = $repoPath . '/lugit/hooks/' . $branch;
@@ -533,15 +577,15 @@ HOOK;
 		$this->sendJson(['message' => "CI/CD hook installed for branch '$branch' in '$repoName'"]);
 	}
 
-	private function cicdDelHook(string $repoName, string $branch): void
+	private function cicdDelHook(string $username, string $repoName, string $branch): void
 	{
-		$this->checkRepoAccess($repoName);
+		$this->checkRepoAccess($username, $repoName);
 		$this->requireCicdAccess();
 		if (str_contains($branch, '..')) {
 			$this->sendError(400, "Invalid branch name");
 		}
 
-		$repoPath = $this->basePath . '/' . $repoName;
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		$hookFile = $repoPath . '/lugit/hooks/' . $branch;
 
 		if (!file_exists($hookFile)) {
@@ -552,14 +596,14 @@ HOOK;
 		$this->sendJson(['message' => "CI/CD hook removed for branch '$branch'"]);
 	}
 
-	private function cicdGetLogs(string $repoName, string $branch): void
+	private function cicdGetLogs(string $username, string $repoName, string $branch): void
 	{
-		$this->checkRepoAccess($repoName);
+		$this->checkRepoAccess($username, $repoName);
 		if (str_contains($branch, '..')) {
 			$this->sendError(400, "Invalid branch name");
 		}
 
-		$repoPath = $this->basePath . '/' . $repoName;
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		$logFile = $repoPath . '/lugit/logs/' . $branch;
 
 		$content = '';
@@ -570,14 +614,14 @@ HOOK;
 		$this->sendJson(['logs' => [$branch => $content]]);
 	}
 
-	private function cicdCleanLogs(string $repoName, string $branch): void
+	private function cicdCleanLogs(string $username, string $repoName, string $branch): void
 	{
-		$this->checkRepoAccess($repoName);
+		$this->checkRepoAccess($username, $repoName);
 		if (str_contains($branch, '..')) {
 			$this->sendError(400, "Invalid branch name");
 		}
 
-		$repoPath = $this->basePath . '/' . $repoName;
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		$logFile = $repoPath . '/lugit/logs/' . $branch;
 
 		if (!file_exists($logFile)) {
@@ -588,15 +632,15 @@ HOOK;
 		$this->sendJson(['message' => "Logs cleared for branch '$branch'"]);
 	}
 
-	private function cicdRunHook(string $repoName, string $branch): void
+	private function cicdRunHook(string $username, string $repoName, string $branch): void
 	{
-		$this->checkRepoAccess($repoName);
+		$this->checkRepoAccess($username, $repoName);
 		$this->requireCicdAccess();
 		if (str_contains($branch, '..')) {
 			$this->sendError(400, "Invalid branch name");
 		}
 
-		$repoPath = $this->basePath . '/' . $repoName;
+		$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
 		$hookFile = $repoPath . '/lugit/hooks/' . $branch;
 
 		if (!file_exists($hookFile) || !is_executable($hookFile)) {

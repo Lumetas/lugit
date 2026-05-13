@@ -3,17 +3,36 @@
 namespace Lugit;
 
 class Utils {
-    public static function getRepoPath(string $repoName): string {
+    public static function getRepoPath(string $username, string $repoName): string {
         $basePath = Config::getRepositoriesPath();
         $excluded = Config::getExcludedFolders();
         
+        if (in_array($username, $excluded)) {
+            throw new \RuntimeException("User not found");
+        }
         if (in_array($repoName, $excluded)) {
             throw new \RuntimeException("Repository not found: $repoName");
         }
         
-        $repoPath = $basePath . '/' . $repoName;
+        $repoPath = $basePath . '/' . $username . '/' . $repoName;
         if (!is_dir($repoPath)) {
-            throw new \RuntimeException("Repository not found: $repoName");
+            throw new \RuntimeException("Repository not found: $username/$repoName");
+        }
+        
+        return $repoPath;
+    }
+
+    public static function findRepoPath(string $username, string $repoName): ?string {
+        $basePath = Config::getRepositoriesPath();
+        $excluded = Config::getExcludedFolders();
+        
+        if (in_array($username, $excluded) || in_array($repoName, $excluded)) {
+            return null;
+        }
+        
+        $repoPath = $basePath . '/' . $username . '/' . $repoName;
+        if (!is_dir($repoPath)) {
+            return null;
         }
         
         return $repoPath;
@@ -21,6 +40,10 @@ class Utils {
 
     public static function isValidRepoName(string $name): bool {
         return preg_match('/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/', $name) === 1 && strpos($name, '..') === false;
+    }
+
+    public static function isValidUsername(string $username): bool {
+        return preg_match('/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/', $username) === 1 && strpos($username, '..') === false;
     }
 
     public static function listRepositories(): array {
@@ -31,19 +54,28 @@ class Utils {
             return [];
         }
         
-        $repos = [];
-        $entries = scandir($basePath);
-        foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..') continue;
-            if (in_array($entry, $excluded)) continue;
+        $result = [];
+        $users = scandir($basePath);
+        foreach ($users as $username) {
+            if ($username === '.' || $username === '..') continue;
+            if (in_array($username, $excluded)) continue;
             
-            $repoPath = $basePath . '/' . $entry;
-            if (is_dir($repoPath) && is_dir($repoPath . '/objects') && is_dir($repoPath . '/refs')) {
-                $repos[] = $entry;
+            $userPath = $basePath . '/' . $username;
+            if (!is_dir($userPath)) continue;
+            
+            $repos = scandir($userPath);
+            foreach ($repos as $repoName) {
+                if ($repoName === '.' || $repoName === '..') continue;
+                if (in_array($repoName, $excluded)) continue;
+                
+                $repoPath = $userPath . '/' . $repoName;
+                if (is_dir($repoPath) && is_dir($repoPath . '/objects') && is_dir($repoPath . '/refs')) {
+                    $result[] = $username . '/' . $repoName;
+                }
             }
         }
         
-        return $repos;
+        return $result;
     }
 
     public static function isGitRepo(string $path): bool {

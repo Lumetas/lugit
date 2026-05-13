@@ -11,6 +11,7 @@ class GitHttpServer
 	public function __construct()
 	{
 		Config::init(dirname(__DIR__) . '/config.json');
+		RepoCache::init(Config::getCacheFile());
 		$this->basePath = Config::getRepositoriesPath();
 		$this->excludedFolders = Config::getExcludedFolders();
 	}
@@ -20,26 +21,38 @@ class GitHttpServer
 		$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 		$method = $_SERVER['REQUEST_METHOD'];
 
-		if (preg_match('#^/?repos/([^/]+)(/.*)?$#', $path, $matches)) {
-			$repoName = $matches[1];
-			$action = $matches[2] ?? '/info/refs';
-		} elseif (preg_match('#^/?([^/]+)(/.*)?$#', $path, $matches)) {
-			$repoName = $matches[1];
-			$action = $matches[2] ?? '/info/refs';
+		if (preg_match('#^/?([^/]+)/([^/]+)(/.*)?$#', $path, $matches)) {
+			$username = $matches[1];
+			$repoName = $matches[2];
+			$action = $matches[3] ?? '/info/refs';
 		} else {
 			error_log("Invalid path: $path");
 			$this->sendError(400, "Invalid path");
 			return;
 		}
 
-		error_log("Repo: $repoName, Action: $action");
+		error_log("User: $username, Repo: $repoName, Action: $action");
 
-		if (!Utils::isValidRepoName($repoName) || in_array($repoName, $this->excludedFolders)) {
+		if (!Utils::isValidUsername($username) || !Utils::isValidRepoName($repoName)) {
 			$this->sendError(404, "Repository not found");
 			return;
 		}
 
-		$repoPath = $this->basePath . '/' . $repoName;
+		if (in_array($username, $this->excludedFolders) || in_array($repoName, $this->excludedFolders)) {
+			$this->sendError(404, "Repository not found");
+			return;
+		}
+
+		if (RepoCache::hasRepo($username, $repoName)) {
+			$repoPath = $this->basePath . '/' . $username . '/' . $repoName;
+		} else {
+			$repoPath = Utils::findRepoPath($username, $repoName);
+			if ($repoPath === null) {
+				$this->sendError(404, "Repository not found");
+				return;
+			}
+		}
+
 		if (!Utils::isGitRepo($repoPath)) {
 			$this->sendError(404, "Repository not found");
 			return;

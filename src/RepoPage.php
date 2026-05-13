@@ -9,24 +9,38 @@ class RepoPage {
 
     public function handle(): void {
         Config::init(dirname(__DIR__) . '/config.json');
+        RepoCache::init(Config::getCacheFile());
         $this->basePath = Config::getRepositoriesPath();
         $this->excludedFolders = Config::getExcludedFolders();
 
         $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-        $path = preg_replace('#^/?repos/([^/]+)/?$#', '$1', $path);
+        $path = preg_replace('#^/?repos/([^/]+)/([^/]+)/?$#', '$1/$2', $path);
         
-        if (empty($path) || !preg_match('/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/', $path)) {
+        if (empty($path) || !str_contains($path, '/')) {
             $this->sendError(404, "Repository not found");
             return;
         }
 
-        if (in_array($path, $this->excludedFolders)) {
+        [$username, $repoName] = explode('/', $path, 2);
+
+        if (!Utils::isValidUsername($username) || !Utils::isValidRepoName($repoName)) {
             $this->sendError(404, "Repository not found");
             return;
         }
 
-        $repoPath = $this->basePath . '/' . $path;
-        if (!Utils::isGitRepo($repoPath)) {
+        if (in_array($username, $this->excludedFolders) || in_array($repoName, $this->excludedFolders)) {
+            $this->sendError(404, "Repository not found");
+            return;
+        }
+
+        $repoPath = null;
+        if (RepoCache::hasRepo($username, $repoName)) {
+            $repoPath = $this->basePath . '/' . $username . '/' . $repoName;
+        } else {
+            $repoPath = Utils::findRepoPath($username, $repoName);
+        }
+
+        if ($repoPath === null || !Utils::isGitRepo($repoPath)) {
             $this->sendError(404, "Repository not found");
             return;
         }
@@ -34,22 +48,21 @@ class RepoPage {
         $config = RepoConfig::load($repoPath);
         
         if (!$config->public) {
-            $this->renderPrivate($path);
+            $this->renderPrivate($username, $repoName);
             return;
         }
 
-        $this->renderPublic($path, $repoPath, $config);
+        $this->renderPublic($username, $repoName, $repoPath, $config);
     }
 
-    private function renderPublic(string $name, string $repoPath, RepoConfig $config): void {
-        $cloneUrl = $this->getCloneUrl($name);
+    private function renderPublic(string $username, string $name, string $repoPath, RepoConfig $config): void {
+        $cloneUrl = $this->getCloneUrl($username, $name);
         $readme = $this->getReadme($repoPath);
         $defaultBranch = $this->getDefaultBranch($repoPath);
 
         $readmeHtml = '';
         if ($readme) {
-            /* $readmeHtml = Markdown::render($readme); */
-			$readmeHtml = (new Markdown())->setContent($readme)->getHtml();
+            $readmeHtml = (new Markdown())->setContent($readme)->getHtml();
         }
 
         $usersList = '';
@@ -73,7 +86,7 @@ class RepoPage {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{$name} - Git Repository</title>
+    <title>{$username}/{$name} - Git Repository</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -102,6 +115,11 @@ class RepoPage {
             font-size: 2.5rem;
             color: #f0f6fc;
             margin-bottom: 10px;
+        }
+        .repo-name {
+            font-size: 1.25rem;
+            color: #8b949e;
+            margin-bottom: 5px;
         }
         .clone-box {
             background: #161b22;
@@ -257,6 +275,7 @@ class RepoPage {
 <body>
     <div class="container">
         <div class="header">
+            <p class="repo-name">{$username}</p>
             <h1>{$name}</h1>
         </div>
 
@@ -269,7 +288,6 @@ class RepoPage {
         </div>
         
         {$readmeSection}
-        <!-- {$usersList} -->
     </div>
 
     <div class="copy-toast" id="toast">URL copied to clipboard!</div>
@@ -290,7 +308,7 @@ class RepoPage {
 HTML;
     }
 
-    private function renderPrivate(string $name): void {
+    private function renderPrivate(string $username, string $name): void {
         echo <<<HTML
 <!DOCTYPE html>
 <html lang="en">
@@ -336,14 +354,14 @@ HTML;
     <div class="container">
         <div class="lock-icon">🔒</div>
         <h1>Private Repository</h1>
-        <p>You don't have access to <span class="repo-name">{$name}</span></p>
+        <p>You don't have access to <span class="repo-name">{$username}/{$name}</span></p>
     </div>
 </body>
 </html>
 HTML;
     }
 
-    private function getCloneUrl(string $name): string {
+    private function getCloneUrl(string $username, string $name): string {
         $scheme = $_SERVER['REQUEST_SCHEME'] ?? ($_SERVER['HTTPS'] ?? null ? 'https' : 'http');
         $hostHeader = $_SERVER['HTTP_HOST'] ?? 'localhost';
         
@@ -362,7 +380,7 @@ HTML;
             $baseUrl .= ":$port";
         }
         
-        return "$baseUrl/$name";
+        return "$baseUrl/$username/$name";
     }
 
     private function getReadme(string $repoPath): ?string {
