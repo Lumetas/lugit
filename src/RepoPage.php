@@ -14,7 +14,7 @@ class RepoPage {
         $this->excludedFolders = Config::getExcludedFolders();
 
         $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-        $path = preg_replace('#^/?repos/([^/]+)/([^/]+)/?$#', '$1/$2', $path);
+        $path = preg_replace('#^/?([^/]+)/([^/]+)/?$#', '$1/$2', $path);
         
         if (empty($path) || !str_contains($path, '/')) {
             $this->sendError(404, "Repository not found");
@@ -86,7 +86,7 @@ class RepoPage {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{$username}/{$name} - Git Repository</title>
+    <title>{$username}/{$name}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -315,7 +315,7 @@ HTML;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{$name} - Private Repository</title>
+    <title>{$username}/{$name}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
