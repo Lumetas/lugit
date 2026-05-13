@@ -45,6 +45,21 @@ class Cli
 			return;
 		}
 
+		if ($command === 'skey-add') {
+			self::cmdSshKeyAdd();
+			return;
+		}
+
+		if ($command === 'skey-list') {
+			self::cmdSshKeyList();
+			return;
+		}
+
+		if ($command === 'skey-del') {
+			self::cmdSshKeyDelete();
+			return;
+		}
+
 		if ($command === 'login') {
 			self::cmdLogin();
 			return;
@@ -425,6 +440,60 @@ class Cli
 		self::printSuccess("CI/CD hook installed for branch '$branchName' in '$repoName'");
 	}
 
+	private static function cmdSshKeyList(): void
+	{
+		$response = self::request('GET', '/ssh/keys');
+		$keys = $response['keys'] ?? [];
+
+		if (empty($keys)) {
+			echo "No SSH keys configured.\n";
+			return;
+		}
+
+		echo "\n";
+		echo "┌────────────────┬──────────────────────────────────────┐\n";
+		echo "│ ID             │ Fingerprint                          │\n";
+		echo "├────────────────┼──────────────────────────────────────┤\n";
+
+		foreach ($keys as $key => $id) {
+			$idLen = strlen($id);
+			$id = substr($id, 0, 14);
+			$id = str_pad($id, 14, ' ', STR_PAD_BOTH);
+			$fp = substr($key ?? 'unknown', 0, 33);
+			
+			echo "│ $id │ $fp... │\n";
+		}
+
+		echo "└────────────────┴──────────────────────────────────────┘\n";
+	}
+
+	private static function cmdSshKeyAdd(): void
+	{
+		$keyPath = self::argOrFail('key-path');
+
+		if (!file_exists($keyPath)) {
+			self::printError("Key file not found: $keyPath");
+			exit(1);
+		}
+
+		$keyContent = trim(file_get_contents($keyPath));
+		
+		$data = ['key' => $keyContent];
+		$response = self::request('POST', '/ssh/keys', $data);
+
+		self::printSuccess("SSH key added with ID: " . ($response['id'] ?? 'unknown'));
+	}
+
+	private static function cmdSshKeyDelete(): void
+	{
+		$keyId = self::argOrFail('key-id');
+
+		$data = ['id' => trim(file_get_contents($keyId))];
+		$response = self::request('DELETE', '/ssh/keys', $data);
+
+		self::printSuccess("SSH key deleted: $keyId");
+	}
+
 	private static function formatOutput(string $command, array $data): void
 	{
 		switch ($command) {
@@ -634,6 +703,11 @@ class Cli
     cicd-run <user>/<name> <branch>        Manually trigger a CI/CD hook
     cicd-logs <user>/<name> <branch>       Show CI/CD logs for a branch
     cicd-logs-clean <name> <branch>        Clear CI/CD logs for a branch
+
+\033[33mSSH Key Commands:\033[0m
+    skey-add <path>                       Add SSH key from file
+    skey-list                             List your SSH keys
+    skey-del <key-id>                     Delete SSH key
 
 \033[33mOther Commands:\033[0m
     help [command]                          Show help for a command

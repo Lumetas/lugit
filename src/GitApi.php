@@ -41,10 +41,12 @@ class GitApi
 		$repoPath = $this->getUserRepoPath($repoName);
 		if ($repoPath === null) {
 			$this->sendError(404, "Repository not found");
+			return null;
 		}
 		$config = RepoConfig::load($repoPath);
 		if (!$config->hasUser($this->currentUser['username'])) {
 			$this->sendError(403, "Access denied");
+			return null;
 		}
 		return $config;
 	}
@@ -54,12 +56,14 @@ class GitApi
 		$result = $this->parseRepoInput($repoInput);
 		if ($result === null) {
 			$this->sendError(404, "Repository not found");
+			return null;
 		}
 		$config = RepoConfig::load($result['path']);
 		if ($config->public || $config->hasUser($this->currentUser['username'])) {
 			return $result;
 		}
 		$this->sendError(403, "Access denied");
+		return null;
 	}
 
 	private function checkCicdAccess(string $repoInput): ?array
@@ -67,10 +71,12 @@ class GitApi
 		$result = $this->parseRepoInput($repoInput);
 		if ($result === null) {
 			$this->sendError(404, "Repository not found");
+			return null;
 		}
 		$config = RepoConfig::load($result['path']);
 		if (!$config->hasUser($this->currentUser['username'])) {
 			$this->sendError(403, "Access denied");
+			return null;
 		}
 		return $result;
 	}
@@ -578,6 +584,53 @@ HOOK;
 		exec($cmd);
 
 		$this->sendJson(['message' => "CI/CD hook triggered manually for branch '$branch'"]);
+	}
+
+	public function listSshKeys(): void
+	{
+		$username = $this->currentUser['username'];
+		
+		$keys = new KeysRepository();
+		$keys->listKeys($username);
+		$this->sendJson(['keys' => $keys->listKeys($username)]);
+	}
+
+	public function addSshKey(): void
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		$key = $data['key'] ?? null;
+		
+		if (!$key) {
+			$this->sendError(400, "Missing 'key' field");
+		}
+		
+		$key = trim($key);
+		if (!preg_match('/^(ssh-rsa|ssh-ed25519|ssh-ecdsa|ecdsa-sha2-nistp\d+|sk-userauth@openssh\.com) /i', $key)) {
+			$this->sendError(400, "Invalid SSH key format");
+		}
+		
+		$keys = new KeysRepository();
+		$id = $keys->add($this->currentUser['username'], $key);
+		$keys->save();
+		$this->sendJson(['id' => $id ?? 'unknown']);
+		
+	}
+
+	public function deleteSshKey(): void
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		$keyId = $data['id'] ?? '';
+		
+		if (!$keyId) {
+			$this->sendError(400, "Missing 'id' field");
+		}
+		
+		$username = $this->currentUser['username'];
+	
+		
+		$keys = new KeysRepository();
+		$keys->remove($username, $keyId);
+		$keys->save();
 	}
 
 	private function sendJson(array $data, int $code = 200): void

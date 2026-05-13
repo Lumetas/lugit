@@ -34,14 +34,14 @@
                     <span id="currentUser"></span>
                     <button class="btn btn-secondary btn-small" onclick="showCreateRepo()">New Repository</button>
                     <button class="btn btn-secondary btn-small" onclick="showLogout()">Logout</button>
+                    <button class="btn btn-secondary btn-small" onclick="showChangePassword()">Change Password</button>
                 </div>
             </div>
-            <!---->
-            <!-- <div class="tabs"> -->
-            <!--     <button class="tab active" onclick="showTab('repos')">Repositories</button> -->
-            <!--     <button class="tab" onclick="showTab('cicd')">CI/CD</button> -->
-            <!--     <button class="tab" onclick="showTab('settings')">Settings</button> -->
-            <!-- </div> -->
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('repos')">Repositories</button>
+                <button class="tab" onclick="showTab('cicd')">CI/CD</button>
+                <button class="tab" onclick="showTab('settings')">SSH Keys</button>
+            </div>
 
             <div id="reposSection" class="section active">
                 <div class="section-header">
@@ -86,8 +86,17 @@
 
             <div id="settingsSection" class="section">
                 <div class="section-header">
-                    <h2>Repository Settings</h2>
+                    <h2>SSH Keys</h2>
                 </div>
+                <div id="sshKeysContent">
+                    <div style="margin-bottom: 16px;">
+                        <button class="btn btn-primary" onclick="showAddSshKey()">Add SSH Key</button>
+                    </div>
+                    <div id="sshKeysList"></div>
+                </div>
+            </div>
+
+            <div id="reposSection" class="section active">
                 <div class="form-group">
                     <label>Select Repository</label>
                     <select id="settingsRepoSelect" onchange="loadRepoSettings()">

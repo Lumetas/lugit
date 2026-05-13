@@ -14,7 +14,8 @@ function clearStoredCredentials() {
 }
 
 function copyRepoUrl(name) {
-	copyToClipboard(window.location.origin + '/' + name);
+	const creds = getStoredCredentials();
+	copyToClipboard(window.location.origin + '/' + (creds?.username || '') + '/' + name);
 }
 
 async function copyToClipboard(text) {
@@ -154,6 +155,69 @@ function doLogout() {
 	showToast('Logged out');
 }
 
+function showChangePassword() {
+	showModal('Change Password', `
+                <div class="form-group">
+                    <label>Current Password</label>
+                    <input type="password" id="currentPass" placeholder="Enter current password">
+                </div>
+                <div class="form-group">
+                    <label>New Password</label>
+                    <input type="password" id="newPass" placeholder="Enter new password">
+                </div>
+                <div class="form-group">
+                    <label>Confirm New Password</label>
+                    <input type="password" id="confirmPass" placeholder="Confirm new password">
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="changePassword()">Change Password</button>
+                </div>
+            `);
+}
+
+async function changePassword() {
+	const currentPass = document.getElementById('currentPass').value;
+	const newPass = document.getElementById('newPass').value;
+	const confirmPass = document.getElementById('confirmPass').value;
+
+	if (!currentPass || !newPass) {
+		showToast('Please fill all fields', 'error');
+		return;
+	}
+
+	if (newPass !== confirmPass) {
+		showToast('New passwords do not match', 'error');
+		return;
+	}
+
+	if (newPass.length < 4) {
+		showToast('Password must be at least 4 characters', 'error');
+		return;
+	}
+
+	const creds = getStoredCredentials();
+	if (!creds) {
+		showToast('Session expired', 'error');
+		return;
+	}
+
+	try {
+		await apiRequest('/changepass', {
+			method: 'POST',
+			body: {
+				username: creds.username,
+				password: currentPass,
+				newPassword: newPass
+			}
+		});
+		closeModal();
+		showToast('Password changed successfully!');
+	} catch (error) {
+		showToast(error.message, 'error');
+	}
+}
+
 function showLogin() {
 	document.getElementById('loginSection').style.display = 'block';
 	document.getElementById('dashboardSection').style.display = 'none';
@@ -210,10 +274,12 @@ function renderRepoList(repos) {
 		return;
 	}
 
-	container.innerHTML = repos.map(repo => `
+	container.innerHTML = repos.map(repo => {
+                const creds = getStoredCredentials();
+                return `
                 <div class="repo-item">
                     <div class="repo-header">
-                        <a href="/repos/${repo.name}" class="repo-name" target="_blank">${repo.name}</a>
+                        <a href="/${creds?.username || ''}/${repo.name}" class="repo-name" target="_blank" onclick="event.stopPropagation()">${repo.name}</a>
                         <span class="badge ${repo.public ? 'badge-public' : 'badge-private'}">
                             ${repo.public ? 'Public' : 'Private'}
                         </span>
@@ -229,7 +295,8 @@ function renderRepoList(repos) {
                         <button class="btn btn-danger btn-small" onclick="confirmDelete('${repo.name}')">Delete</button>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
 }
 
 function updateRepoSelects(repos) {
@@ -290,7 +357,7 @@ async function createRepo() {
 	}
 }
 
-function confirmDelete(name) {
+async function confirmDelete(name) {
 	showModal('Delete Repository', `
                 <p>Are you sure you want to delete <strong>${name}</strong>?</p>
                 <p style="color: #f85149; margin-top: 8px;">This action cannot be undone.</p>
@@ -666,11 +733,18 @@ async function settingsDeleteRepo(repoName) {
 }
 
 function showTab(tabName) {
-	document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
 	document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
 
-	event.target.classList.add('active');
+	if (event && event.target) {
+		document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+		event.target.classList.add('active');
+	}
+
 	document.getElementById(tabName + 'Section').classList.add('active');
+
+	if (tabName === 'settings') {
+		loadSshKeys();
+	}
 }
 
 function showModal(title, content) {
@@ -689,4 +763,90 @@ document.addEventListener('DOMContentLoaded', () => {
 		if (e.key === 'Escape') closeModal();
 	});
 });
+
+async function loadSshKeys() {
+	try {
+		const data = await apiRequest('/ssh/keys');
+		const keys = data.keys || [];
+		
+		const container = document.getElementById('sshKeysList');
+		if (keys.length === 0) {
+			container.innerHTML = '<p style="color: #8b949e;">No SSH keys configured. Add a key to use git over SSH.</p>';
+			return;
+		}
+		
+		container.innerHTML = keys.map(key => `
+			<div class="repo-item">
+				<div class="repo-header">
+					<span style="font-family: monospace; color: #58a6ff;">${key.id}</span>
+				</div>
+				<div class="repo-actions">
+					<span style="color: #8b949e; font-size: 12px;">${key.fingerprint || 'unknown'}</span>
+					<button class="btn btn-danger btn-small" onclick="confirmDeleteSshKey('${key.id}')">Delete</button>
+				</div>
+			</div>
+		`).join('');
+	} catch (error) {
+		document.getElementById('sshKeysList').innerHTML = `<p style="color: #f85149;">Error: ${error.message}</p>`;
+	}
+}
+
+function showAddSshKey() {
+	showModal('Add SSH Key', `
+		<div class="form-group">
+			<label>Paste your public SSH key</label>
+			<textarea id="sshKeyInput" style="height: 120px; font-family: monospace;" placeholder="ssh-rsa AAAA... user@host"></textarea>
+		</div>
+		<div class="form-actions">
+			<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+			<button class="btn btn-primary" onclick="addSshKey()">Add Key</button>
+		</div>
+	`);
+}
+
+async function addSshKey() {
+	const key = document.getElementById('sshKeyInput').value.trim();
+	
+	if (!key) {
+		showToast('Please paste a public key', 'error');
+		return;
+	}
+	
+	try {
+		await apiRequest('/ssh/keys', {
+			method: 'POST',
+			body: { key }
+		});
+		closeModal();
+		loadSshKeys();
+		showToast('SSH key added');
+	} catch (error) {
+		showToast(error.message, 'error');
+	}
+}
+
+function confirmDeleteSshKey(keyId) {
+	showModal('Delete SSH Key', `
+		<p>Delete SSH key <strong>${keyId}</strong>?</p>
+		<p style="color: #f85149;">You will no longer be able to use git over SSH with this key.</p>
+		<div class="form-actions">
+			<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+			<button class="btn btn-danger" onclick="deleteSshKey('${keyId}')">Delete</button>
+		</div>
+	`);
+}
+
+async function deleteSshKey(keyId) {
+	try {
+		await apiRequest('/ssh/keys', {
+			method: 'DELETE',
+			body: { id: keyId }
+		});
+		closeModal();
+		loadSshKeys();
+		showToast('SSH key deleted');
+	} catch (error) {
+		showToast(error.message, 'error');
+	}
+}
 

@@ -133,12 +133,29 @@ class ApiController
 		$this->api->register();
 	}
 
-	#[Route('/changepass', method: 'POST')]
+#[Route('/changepass', method: 'POST')]
 	public function changePassword(): void
 	{
 		$this->api->changePassword();
 	}
 
+	#[Route('/ssh/keys', method: 'GET')]
+	public function listSshKeys(): void
+	{
+		$this->api->listSshKeys();
+	}
+
+	#[Route('/ssh/keys', method: 'POST')]
+	public function addSshKey(): void
+	{
+		$this->api->addSshKey();
+	}
+
+	#[Route('/ssh/keys', method: 'DELETE')]
+	public function deleteSshKey(): void
+	{
+		$this->api->deleteSshKey();
+	}
 
 	#[Route('/repos/{user}/{repo}')]
 	public function repo(string $user, string $repo): void
