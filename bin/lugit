@@ -77,19 +77,19 @@ class Cli
 
 		$handlers = [
 			'list' => ['GET', '/repos', null, 'List all repositories'],
-			'info' => ['GET', '/repos/{username}/{name}', ['username', 'name'], 'Show repository information'],
-			'create' => ['POST', '/repos/{username}/{name}', ['username', 'name'], 'Create a new bare repository'],
-			'delete' => ['DELETE', '/repos/{username}/{name}', ['username', 'name'], 'Delete a repository'],
-			'user-add' => ['POST', '/repos/{username}/{name}/users/{targetUser}', ['username', 'name', 'targetUser'], 'Add user access to repository'],
-			'user-remove' => ['DELETE', '/repos/{username}/{name}/users/{targetUser}', ['username', 'name', 'targetUser'], 'Remove user access from repository'],
-			'user-list' => ['GET', '/repos/{username}/{name}/users', ['username', 'name'], 'List users with repository access'],
-			'set-public' => ['PUT', '/repos/{username}/{name}/public', ['username', 'name'], 'Make repository public'],
-			'set-private' => ['PUT', '/repos/{username}/{name}/private', ['username', 'name'], 'Make repository private'],
-			'cicd-list' => ['GET', '/repos/{username}/{name}/cicd', ['username', 'name'], 'List CI/CD hooks for repository'],
-			'cicd-del' => ['DELETE', '/repos/{username}/{name}/cicd/{branch}', ['username', 'name', 'branch'], 'Delete CI/CD hook'],
-			'cicd-logs' => ['GET', '/repos/{username}/{name}/cicd/logs/{branch}', ['username', 'name', 'branch'], 'Show CI/CD logs for a branch'],
-			'cicd-logs-clean' => ['DELETE', '/repos/{username}/{name}/cicd/logs/{branch}', ['username', 'name', 'branch'], 'Clear CI/CD logs for a branch'],
-			'cicd-run' => ['POST', '/repos/{username}/{name}/cicd/{branch}/run', ['username', 'name', 'branch'], 'Manually run CI/CD hook'],
+			'info' => ['GET', '/repos/{repoInput}', 'repoInput', 'Show repository information'],
+			'create' => ['POST', '/repos/{name}', 'name', 'Create a new bare repository'],
+			'delete' => ['DELETE', '/repos/{name}', 'name', 'Delete a repository'],
+			'user-add' => ['POST', '/repos/{name}/users/{targetUser}', ['name', 'targetUser'], 'Add user access to repository'],
+			'user-remove' => ['DELETE', '/repos/{name}/users/{targetUser}', ['name', 'targetUser'], 'Remove user access from repository'],
+			'user-list' => ['GET', '/repos/{repoInput}/users', 'repoInput', 'List users with repository access'],
+			'set-public' => ['PUT', '/repos/{name}/public', 'name', 'Make repository public'],
+			'set-private' => ['PUT', '/repos/{name}/private', 'name', 'Make repository private'],
+			'cicd-list' => ['GET', '/repos/{repoInput}/cicd', 'repoInput', 'List CI/CD hooks for repository'],
+			'cicd-del' => ['DELETE', '/repos/{name}/cicd/{branch}', ['name', 'branch'], 'Delete CI/CD hook'],
+			'cicd-logs' => ['GET', '/repos/{repoInput}/cicd/logs/{branch}', ['repoInput', 'branch'], 'Show CI/CD logs for a branch'],
+			'cicd-logs-clean' => ['DELETE', '/repos/{repoInput}/cicd/logs/{branch}', ['repoInput', 'branch'], 'Clear CI/CD logs for a branch'],
+			'cicd-run' => ['POST', '/repos/{repoInput}/cicd/{branch}/run', ['repoInput', 'branch'], 'Manually run CI/CD hook'],
 		];
 
 		if (!isset($handlers[$command])) {
@@ -105,11 +105,21 @@ class Cli
 
 			if (is_string($params)) {
 				$value = self::argOrFail($params);
-				$path = str_replace('{' . $params . '}', urlencode($value), $path);
+				if ($params === 'repoInput' && str_contains($value, '/')) {
+					$parts = explode('/', $value, 2);
+					$path = str_replace('{repoInput}', urlencode($parts[0]) . '/' . urlencode($parts[1]), $path);
+				} else {
+					$path = str_replace('{' . $params . '}', urlencode($value), $path);
+				}
 			} elseif (is_array($params)) {
 				foreach ($params as $param) {
 					$value = self::argOrFail($param);
-					$path = str_replace('{' . $param . '}', urlencode($value), $path);
+					if ($param === 'repoInput' && str_contains($value, '/')) {
+						$parts = explode('/', $value, 2);
+						$path = str_replace('{repoInput}', urlencode($parts[0]) . '/' . urlencode($parts[1]), $path);
+					} else {
+						$path = str_replace('{' . $param . '}', urlencode($value), $path);
+					}
 				}
 			}
 
@@ -396,7 +406,6 @@ class Cli
 
 	private static function cmdCicdSet(): void
 	{
-		$username = self::argOrFail('username');
 		$repoName = self::argOrFail('repoName');
 		$branchName = self::argOrFail('branchName');
 		$scriptPath = self::argOrFail('scriptPath');
@@ -409,7 +418,7 @@ class Cli
 		$scriptContent = file_get_contents($scriptPath);
 		$encoded = base64_encode($scriptContent);
 
-		$path = '/repos/' . urlencode($username) . '/' . urlencode($repoName) . '/cicd/' . urlencode($branchName);
+		$path = '/repos/' . urlencode($repoName) . '/cicd/' . urlencode($branchName);
 		$data = ['script' => $encoded];
 
 		$response = self::request('POST', $path, $data);
@@ -605,36 +614,36 @@ class Cli
     whoami                                 Show current user and server
     set-server <url>                       Set default server URL
 
-\033[33mRepository Commands:\033[0m
+	\033[33mRepository Commands:\033[0m
     list                                   List all repositories
-    info <user> <name>                     Show repository information
-    create <user> <name>                    Create a new bare repository
-    delete <user> <name>                    Delete a repository
-    set-public <user> <name>                Make repository public
-    set-private <user> <name>               Make repository private
+    info <user>/<name>                    Show repository information
+    create <name>                          Create a new bare repository
+    delete <name>                          Delete a repository
+    set-public <name>                      Make repository public
+    set-private <name>                     Make repository private
 
 \033[33mUser Management Commands:\033[0m
-    user-add <user> <repo> <username>       Add user access to repository
-    user-remove <user> <repo> <username>    Remove user access from repository
-    user-list <user> <repo>                 List users with repository access
+    user-add <name> <username>             Add user access to repository
+    user-remove <name> <username>          Remove user access from repository
+    user-list <user>/<name>                List users with repository access
 
 \033[33mCI/CD Commands:\033[0m
-    cicd-set <user> <repo> <branch> <script>  Upload and install a CI/CD hook script
-    cicd-del <user> <repo> <branch>          Delete a CI/CD hook
-    cicd-list <user> <repo>                 List installed CI/CD hooks
-    cicd-run <user> <repo> <branch>         Manually trigger a CI/CD hook
-    cicd-logs <user> <repo> <branch>        Show CI/CD logs for a branch
-    cicd-logs-clean <user> <repo> <branch>  Clear CI/CD logs for a branch
+    cicd-set <name> <branch> <script>      Upload and install a CI/CD hook script
+    cicd-del <name> <branch>               Delete a CI/CD hook
+    cicd-list <user>/<name>                List installed CI/CD hooks
+    cicd-run <user>/<name> <branch>        Manually trigger a CI/CD hook
+    cicd-logs <user>/<name> <branch>       Show CI/CD logs for a branch
+    cicd-logs-clean <name> <branch>        Clear CI/CD logs for a branch
 
 \033[33mOther Commands:\033[0m
     help [command]                          Show help for a command
 
-\033[33mExamples:\033[0m
+	\033[33mExamples:\033[0m
     lugit login http://localhost:8080 alice secret123
-    lugit create alice my-project
+    lugit create my-project
     lugit list
-    lugit user-add alice my-project bob
-    lugit info alice my-project
+    lugit user-add my-project bob
+    lugit info alice/my-project
 
 \033[90mNote: Credentials are stored securely in ~/.lugit.json\033[0m
 
@@ -657,34 +666,34 @@ HELP;
 
 			'list' => "\033[33mList repositories\033[0m\n\nUsage: lugit list\n\nShows all repositories you have access to in a formatted table",
 
-			'info' => "\033[33mShow repository info\033[0m\n\nUsage: lugit info <username> <name>\n\n\nArguments:\n  username    Repository owner username\n  name        Repository name\n\nExample:\n  lugit info alice my-project",
+			'info' => "\033[33mShow repository info\033[0m\n\nUsage: lugit info <user>/<name>\n\nArguments:\n  user    Username\n  name    Repository name\n\nExample:\n  lugit info alice/my-project",
 
-			'create' => "\033[33mCreate repository\033[0m\n\nUsage: lugit create <username> <name>\n\n\nArguments:\n  username    Repository owner username\n  name        Repository name\n\nExample:\n  lugit create alice my-new-project",
+			'create' => "\033[33mCreate repository\033[0m\n\nUsage: lugit create <name>\n\nArguments:\n  name    Repository name\n\nExample:\n  lugit create my-new-project",
 
-			'delete' => "\033[33mDelete repository\033[0m\n\nUsage: lugit delete <username> <name>\n\n⚠️  This action cannot be undone!\n\nArguments:\n  username    Repository owner username\n  name        Repository name\n\nExample:\n  lugit delete alice old-project",
+			'delete' => "\033[33mDelete repository\033[0m\n\nUsage: lugit delete <name>\n\n⚠️  This action cannot be undone!\n\nExample:\n  lugit delete old-project",
 
-			'user-add' => "\033[33mAdd user to repository\033[0m\n\nUsage: lugit user-add <username> <repo-name> <target-user>\n\n\nArguments:\n  username      Repository owner username\n  repo-name     Repository name\n  target-user   Username to add\n\nExample:\n  lugit user-add alice my-project bob",
+			'user-add' => "\033[33mAdd user to repository\033[0m\n\nUsage: lugit user-add <repo-name> <username>\n\n\nArguments:\n  repo-name    Repository name\n  username     Username to add\n\nExample:\n  lugit user-add my-project bob",
 
-			'user-remove' => "\033[33mRemove user from repository\033[0m\n\nUsage: lugit user-remove <username> <repo-name> <target-user>\n\nArguments:\n  username      Repository owner username\n  repo-name     Repository name\n  target-user   Username to remove\n\nExample:\n  lugit user-remove alice my-project bob",
+			'user-remove' => "\033[33mRemove user from repository\033[0m\n\nUsage: lugit user-remove <repo-name> <username>\n\nArguments:\n  repo-name    Repository name\n  username     Username to remove\n\nExample:\n  lugit user-remove my-project bob",
 
-			'user-list' => "\033[33mList repository users\033[0m\n\nUsage: lugit user-list <username> <repo-name>\n\nArguments:\n  username      Repository owner username\n  repo-name     Repository name\n\nExample:\n  lugit user-list alice my-project",
+			'user-list' => "\033[33mList repository users\033[0m\n\nUsage: lugit user-list <user>/<repo>\n\n\nArguments:\n  user    Username\n  repo    Repository name\n\nExample:\n  lugit user-list alice/my-project",
 
-			'set-public' => "\033[33mMake repository public\033[0m\n\nUsage: lugit set-public <username> <name>\n\n\nMakes the repository publicly readable without authentication\n\nArguments:\n  username    Repository owner username\n  name        Repository name\n\nExample:\n  lugit set-public alice my-project",
+			'set-public' => "\033[33mMake repository public\033[0m\n\nUsage: lugit set-public <name>\n\nMakes the repository publicly readable without authentication\n\nExample:\n  lugit set-public my-project",
 
-			'set-private' => "\033[33mMake repository private\033[0m\n\nUsage: lugit set-private <username> <name>\n\n\nRestricts repository access to authorized users only\n\nArguments:\n  username    Repository owner username\n  name        Repository name\n\nExample:\n  lugit set-private alice my-project",
+			'set-private' => "\033[33mMake repository private\033[0m\n\nUsage: lugit set-private <name>\n\nRestricts repository access to authorized users only\n\nExample:\n  lugit set-private my-project",
 
-			'cicd-set' => "\033[33mInstall CI/CD hook\033[0m\n\nUsage: lugit cicd-set <username> <repo> <branch> <script>\n\nUploads a script to the server that runs automatically on push to the specified branch.\n\nArguments:\n  username    Repository owner username\n  repo        Repository name\n  branch      Branch name (e.g., main, develop)\n  script      Path to local script file\n\nExamples:\n  lugit cicd-set alice my-project main ./deploy.sh
-  lugit cicd-set alice my-project develop ./test.sh",
+			'cicd-set' => "\033[33mInstall CI/CD hook\033[0m\n\nUsage: lugit cicd-set <repo> <branch> <script>\n\n\nUploads a script to the server that runs automatically on push to the specified branch.\n\n\nArguments:\n  repo      Repository name\n  branch    Branch name (e.g., main, develop)\n  script    Path to local script file\n\nExamples:\n  lugit cicd-set my-project main ./deploy.sh
+  lugit cicd-set my-project develop ./test.sh",
 
-			'cicd-del' => "\033[33mDelete CI/CD hook\033[0m\n\nUsage: lugit cicd-del <username> <repo> <branch>\n\nArguments:\n  username    Repository owner username\n  repo        Repository name\n  branch      Branch name\n\nExample:\n  lugit cicd-del alice my-project main",
+			'cicd-del' => "\033[33mDelete CI/CD hook\033[0m\n\nUsage: lugit cicd-del <repo> <branch>\n\n\nArguments:\n  repo      Repository name\n  branch    Branch name\n\nExample:\n  lugit cicd-del my-project main",
 
-			'cicd-list' => "\033[33mList CI/CD hooks\033[0m\n\nUsage: lugit cicd-list <username> <repo>\n\nArguments:\n  username    Repository owner username\n  repo        Repository name\n\nExample:\n  lugit cicd-list alice my-project",
+			'cicd-list' => "\033[33mList CI/CD hooks\033[0m\n\nUsage: lugit cicd-list <user>/<repo>\n\nArguments:\n  user    Username\n  repo    Repository name\n\nExample:\n  lugit cicd-list alice/my-project",
 
-			'cicd-logs' => "\033[33mShow CI/CD logs\033[0m\n\nUsage: lugit cicd-logs <username> <repo> <branch>\n\nArguments:\n  username    Repository owner username\n  repo        Repository name\n  branch      Branch name\n\nExample:\n  lugit cicd-logs alice my-project main",
+			'cicd-logs' => "\033[33mShow CI/CD logs\033[0m\n\nUsage: lugit cicd-logs <user>/<repo> <branch>\n\nArguments:\n  user    Username\n  repo    Repository name\n  branch  Branch name\n\nExample:\n  lugit cicd-logs alice/my-project main",
 
-			'cicd-logs-clean' => "\033[33mClear CI/CD logs\033[0m\n\nUsage: lugit cicd-logs-clean <username> <repo> <branch>\n\nArguments:\n  username    Repository owner username\n  repo        Repository name\n  branch      Branch name\n\nExample:\n  lugit cicd-logs-clean alice my-project main",
+			'cicd-logs-clean' => "\033[33mClear CI/CD logs\033[0m\n\nUsage: lugit cicd-logs-clean <repo> <branch>\n\n\nArguments:\n  repo      Repository name\n  branch    Branch name\n\nExample:\n  lugit cicd-logs-clean my-project main",
 
-			'cicd-run' => "\033[33mRun CI/CD hook manually\033[0m\n\nUsage: lugit cicd-run <username> <repo> <branch>\n\n\nArguments:\n  username    Repository owner username\n  repo        Repository name\n  branch      Branch name\n\nExample:\n  lugit cicd-run alice my-project main",
+			'cicd-run' => "\033[33mRun CI/CD hook manually\033[0m\n\nUsage: lugit cicd-run <user>/<repo> <branch>\n\nArguments:\n  user    Username\n  repo    Repository name\n  branch  Branch name\n\nExample:\n  lugit cicd-run alice/my-project main",
 		];
 
 		if (isset($helps[$command])) {
