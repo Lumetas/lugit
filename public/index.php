@@ -1,8 +1,12 @@
 <?php
-
 namespace Lugit;
-
 require_once __DIR__ . '/../vendor/autoload.php';
+
+use BMND\Router\Router;
+
+Router::setup('../src/Controllers', 'Lugit\\Controllers\\', '..')->run();
+
+exit;
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 

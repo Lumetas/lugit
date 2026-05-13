@@ -1,0 +1,18 @@
+<?php
+namespace Lugit\Controllers;
+
+
+use BMND\Router\Route;
+use Lugit\RepoPage;
+
+class WebController {
+	#[Route('/')]
+	public function dashboard() :void {
+		readfile(__DIR__ . '/../static/index.html');
+	}
+
+	#[Route('/{user}/{repo}')]
+	public function repo(string $user, string $repo, RepoPage $page) :void {
+		$page->handle($user, $repo);
+	}
+}
