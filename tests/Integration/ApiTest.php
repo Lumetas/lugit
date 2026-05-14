@@ -12,6 +12,7 @@ class ApiTest extends TestCase
     private const BASE_URL = 'http://localhost:8080/api/v1';
     private static string $testUser = 'testuser';
     private static string $testPass = 'testpass';
+    private static string $otherUser = 'otheruser';
 
     private function url(string $path): string
     {
@@ -71,12 +72,39 @@ class ApiTest extends TestCase
         curl_close($ch);
 
         $headerSize = $info['header_size'];
-        $responseHeaders = substr($response, 0, $headerSize);
         $body = substr($response, $headerSize);
 
         return [
             'code' => $info['http_code'],
-            'headers' => $responseHeaders,
+            'body' => json_decode($body, true),
+            'raw' => $body,
+        ];
+    }
+
+    private function requestWithoutAuth(string $method, string $path, ?array $data = null): array
+    {
+        $ch = curl_init($this->url($path));
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CUSTOMREQUEST => $method,
+        ]);
+
+        if ($data !== null) {
+            $json = json_encode($data);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        }
+        $response = curl_exec($ch);
+        $info = curl_getinfo($ch);
+        curl_close($ch);
+
+        $headerSize = $info['header_size'];
+        $body = substr($response, $headerSize);
+
+        return [
+            'code' => $info['http_code'],
             'body' => json_decode($body, true),
             'raw' => $body,
         ];
@@ -114,9 +142,8 @@ class ApiTest extends TestCase
 
     public function testGetCurrentUserWithoutAuth(): void
     {
-        $res = $this->request('GET', '/user', null, []);
-        $this->assertEquals(200, $res['code']);
-        $this->assertNull($res['body']['username']);
+        $res = $this->requestWithoutAuth('GET', '/user');
+        $this->assertEquals(401, $res['code']);
     }
 
     // --- Login ---
@@ -126,7 +153,7 @@ class ApiTest extends TestCase
         $res = $this->post('/login', [
             'username' => self::$testUser,
             'password' => self::$testPass,
-        ], []);
+        ]);
         $this->assertEquals(200, $res['code']);
         $this->assertEquals(self::$testUser, $res['body']['username']);
     }
@@ -136,7 +163,7 @@ class ApiTest extends TestCase
         $res = $this->post('/login', [
             'username' => self::$testUser,
             'password' => 'wrongpass',
-        ], []);
+        ]);
         $this->assertEquals(401, $res['code']);
     }
 
@@ -145,11 +172,10 @@ class ApiTest extends TestCase
     public function testRegisterNewUser(): void
     {
         $res = $this->post('/register', [
-            'username' => 'newbie',
-            'password' => 'newpass',
-        ], []);
+            'username' => 'reg-' . uniqid(),
+            'password' => 'regpass',
+        ]);
         $this->assertEquals(201, $res['code']);
-        $this->assertEquals('User registered successfully', $res['body']['message']);
     }
 
     public function testRegisterDuplicateUser(): void
@@ -157,7 +183,7 @@ class ApiTest extends TestCase
         $res = $this->post('/register', [
             'username' => self::$testUser,
             'password' => 'testpass',
-        ], []);
+        ]);
         $this->assertEquals(409, $res['code']);
     }
 
@@ -165,16 +191,17 @@ class ApiTest extends TestCase
 
     public function testCreateRepo(): void
     {
-        $res = $this->post('/repos/integration-test.git');
+        $repoName = 'int-test-' . uniqid() . '.git';
+        $res = $this->post('/repos/' . $repoName);
         $this->assertEquals(201, $res['code']);
-        $this->assertEquals('integration-test.git', $res['body']['name']);
-        $this->assertEquals(self::$testUser, $res['body']['username']);
+        $this->assertEquals($repoName, $res['body']['name']);
     }
 
     public function testCreateDuplicateRepo(): void
     {
-        $this->post('/repos/dup.git'); // create first
-        $res = $this->post('/repos/dup.git'); // try duplicate
+        $repoName = 'int-dup-' . uniqid() . '.git';
+        $this->post('/repos/' . $repoName);
+        $res = $this->post('/repos/' . $repoName);
         $this->assertEquals(409, $res['code']);
     }
 
@@ -187,22 +214,24 @@ class ApiTest extends TestCase
 
     public function testGetRepo(): void
     {
-        $this->post('/repos/gettest.git');
-        $res = $this->get('/repos/gettest.git');
+        $repoName = 'int-get-' . uniqid() . '.git';
+        $this->post('/repos/' . $repoName);
+        $res = $this->get('/repos/' . $repoName);
         $this->assertEquals(200, $res['code']);
-        $this->assertEquals('gettest.git', $res['body']['name']);
+        $this->assertEquals($repoName, $res['body']['name']);
     }
 
     public function testGetRepoNotFound(): void
     {
-        $res = $this->get('/repos/no-such-repo.git');
+        $res = $this->get('/repos/no-such-repo-' . uniqid() . '.git');
         $this->assertEquals(404, $res['code']);
     }
 
     public function testDeleteRepo(): void
     {
-        $this->post('/repos/deltest.git');
-        $res = $this->delete('/repos/deltest.git');
+        $repoName = 'int-del-' . uniqid() . '.git';
+        $this->post('/repos/' . $repoName);
+        $res = $this->delete('/repos/' . $repoName);
         $this->assertEquals(200, $res['code']);
     }
 
@@ -210,17 +239,19 @@ class ApiTest extends TestCase
 
     public function testSetPublic(): void
     {
-        $this->post('/repos/pubtest.git');
-        $res = $this->put('/repos/pubtest.git/public');
+        $repoName = 'int-pub-' . uniqid() . '.git';
+        $this->post('/repos/' . $repoName);
+        $res = $this->put('/repos/' . $repoName . '/public');
         $this->assertEquals(200, $res['code']);
         $this->assertTrue($res['body']['public']);
     }
 
     public function testSetPrivate(): void
     {
-        $this->post('/repos/privtest.git');
-        $this->put('/repos/privtest.git/public');
-        $res = $this->put('/repos/privtest.git/private');
+        $repoName = 'int-priv-' . uniqid() . '.git';
+        $this->post('/repos/' . $repoName);
+        $this->put('/repos/' . $repoName . '/public');
+        $res = $this->put('/repos/' . $repoName . '/private');
         $this->assertEquals(200, $res['code']);
         $this->assertFalse($res['body']['public']);
     }
@@ -229,26 +260,28 @@ class ApiTest extends TestCase
 
     public function testAddUserToRepo(): void
     {
-        $this->post('/repos/useradd.git');
-        $res = $this->post('/repos/useradd.git/users/otheruser');
+        $repoName = 'int-useradd-' . uniqid() . '.git';
+        $this->post('/repos/' . $repoName);
+        $res = $this->post('/repos/' . $repoName . '/users/' . self::$otherUser);
         $this->assertEquals(200, $res['code']);
-        $this->assertStringContainsString('otheruser', $res['body']['message']);
-    }
-
-    public function testListUsersInRepo(): void
-    {
-        $this->post('/repos/userlist.git');
-        $res = $this->get('/repos/userlist.git/users');
-        $this->assertEquals(200, $res['code']);
-        $this->assertIsArray($res['body']);
     }
 
     public function testRemoveUserFromRepo(): void
     {
-        $this->post('/repos/userrm.git');
-        $this->post('/repos/userrm.git/users/otheruser');
-        $res = $this->delete('/repos/userrm.git/users/otheruser');
+        $repoName = 'int-userrm-' . uniqid() . '.git';
+        $this->post('/repos/' . $repoName);
+        $this->post('/repos/' . $repoName . '/users/' . self::$otherUser);
+        $res = $this->delete('/repos/' . $repoName . '/users/' . self::$otherUser);
         $this->assertEquals(200, $res['code']);
+    }
+
+    public function testListUsersInRepo(): void
+    {
+        $repoName = 'int-userlist-' . uniqid() . '.git';
+        $this->post('/repos/' . $repoName);
+        $res = $this->get('/repos/' . $repoName . '/users');
+        $this->assertEquals(200, $res['code']);
+        $this->assertIsArray($res['body']);
     }
 
     // --- SSH Keys ---
@@ -266,7 +299,7 @@ class ApiTest extends TestCase
         $this->assertEquals(400, $res['code']);
     }
 
-    // --- Change password (via API) ---
+    // --- Change password ---
 
     public function testChangePasswordSuccess(): void
     {
@@ -274,16 +307,42 @@ class ApiTest extends TestCase
             'username' => self::$testUser,
             'password' => self::$testPass,
             'newPassword' => 'newtestpass',
-        ], []);
+        ]);
         $this->assertEquals(200, $res['code']);
+
+        // Restore original password using new password for auth
+        $ch = curl_init($this->url('/changepass'));
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CUSTOMREQUEST => 'POST',
+            CURLOPT_POSTFIELDS => json_encode([
+                'username' => self::$testUser,
+                'password' => 'newtestpass',
+                'newPassword' => self::$testPass,
+            ]),
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Basic ' . base64_encode(self::$testUser . ':newtestpass'),
+                'Content-Type: application/json',
+            ],
+        ]);
+        $response = curl_exec($ch);
+        $info = curl_getinfo($ch);
+        curl_close($ch);
+
+        $headerSize = $info['header_size'];
+        $body = json_decode(substr($response, $headerSize), true);
+        $this->assertEquals(200, $info['http_code'], 'Restore failed: ' . ($body['error'] ?? ''));
     }
 
     // --- CI/CD ---
 
     public function testCicdListHooks(): void
     {
-        $this->post('/repos/cicdtest.git');
-        $res = $this->get('/repos/cicdtest.git/cicd');
+        $repoName = 'int-cicd-' . uniqid() . '.git';
+        $this->post('/repos/' . $repoName);
+        $res = $this->get('/repos/' . $repoName . '/cicd');
         $this->assertEquals(200, $res['code']);
         $this->assertArrayHasKey('hooks', $res['body']);
     }

@@ -16,7 +16,7 @@ class GitController
 	#[Route('/info/refs')]
 	public function infoRefs(string $user, string $repo): void
 	{
-		$repoPath = $this->api->checkRepoAndUser($user, $repo);
+		$repoPath = $this->api->checkRepoAndUser($user, $repo . '.git');
 		if ($repoPath === false) {
 			$this->api->sendError(404, "Repository not found");
 		}
@@ -26,7 +26,7 @@ class GitController
 	#[Route('/git-upload-pack', method: 'POST')]
 	public function uploadPack(string $user, string $repo): void
 	{
-		$repoPath = $this->api->checkRepoAndUser($user, $repo);
+		$repoPath = $this->api->checkRepoAndUser($user, $repo . '.git');
 		if ($repoPath === false) {
 			$this->api->sendError(404, "Repository not found");
 		}
@@ -36,7 +36,7 @@ class GitController
 	#[Route('/git-receive-pack', method: 'POST')]
 	public function receivePack(string $user, string $repo): void
 	{
-		$repoPath = $this->api->checkRepoAndUser($user, $repo);
+		$repoPath = $this->api->checkRepoAndUser($user, $repo . '.git');
 		if ($repoPath === false) {
 			$this->api->sendError(404, "Repository not found");
 		}

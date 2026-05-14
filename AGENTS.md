@@ -21,6 +21,67 @@
 
 ## Структура
 - `tests/Unit/` — модульные тесты (10 файлов, 170 тестов)
+- `tests/Integration/` — интеграционные тесты (3 файла, 36 тестов)
+- `tests/bootstrap.php` — автозагрузка, хелперы (`initTestConfigFromArray`, `createTestBareRepo`, `cleanupTestDir`, `setPrivateProperty`, `getPrivateProperty`)
+- `tests.php` — скрипт-раннер с опциями (--unit, --integration, --port, --ssh, --no-server)
+- `phpunit.xml` — конфиг с двумя suite: unit и integration
+
+## Состояние
+- **Unit: 170/170 pass** (18s)
+- **Integration API: 21/21 pass** (требуется сервер на localhost:8080)
+- **Integration Git HTTP: 8/8 pass** (clone public/private, push, pull, info/refs)
+- **Integration SSH: 7 skipped** (требуется SSH сервер на порту 2222)
+
+## Запуск
+```bash
+# Все unit-тесты
+php vendor/bin/phpunit --configuration phpunit.xml --testsuite unit
+
+# Один тестовый класс
+php vendor/bin/phpunit --configuration phpunit.xml --filter GitApiTest
+
+# Один тест
+php vendor/bin/phpunit --configuration phpunit.xml --filter testCicdListHooksEmpty
+
+# Integration (требуется сервер на localhost:8080)
+php vendor/bin/phpunit --configuration phpunit.xml --testsuite integration
+
+# Через раннер (сам запускает сервер)
+php tests.php --unit --integration
+```
+
+## Ключевые моменты
+- `password_hash(PASSWORD_ARGON2ID)` медленный (~600ms/хеш). Хеши предвычисляются в bootstrap как `TEST_PASS_HASH`/`OTHER_PASS_HASH` — **не вызывать `password_hash` в setUp**
+- `git init --bare` не удаляет лишние директории (lugit/hooks). `createTestBareRepo` не гарантирует чистоту — при переиспользовании имени репы удалять вручную `rm -rf` перед созданием
+- `Config::load()` пытается читать файл из `configPath`. `initTestConfigFromArray` пишет его и ставит config через reflection — не вызывать `Config::reload()` без `Config::init()` с существующим файлом
+- В моках `disableOriginalConstructor()` — GitApi/GitHttpServer конструктор дёргает `Config::init` и сбрасывает тестовый конфиг
+- `sendJson` protected — мокать через `onlyMethods(['sendJson', 'sendError'])`, трекать вызовы через `willReturnCallback`
+- `exit()` в исходном коде — PHPUnit 13 падает с "Premature end of process". Тестировать такие пути через моки или `@runInSeparateProcess`
+- `Utils::findRepoPath` использует `Config::getRepositoriesPath()`, а не `$this->basePath` на моке
+- RepoCache статический — `RepoCache::init()` в setUp сбрасывает состояние
+- GitController: роут `/{user}/{repo}.git` отдаёт `{repo}` без `.git`. В `checkRepoAndUser` передавать с `.git` (см. `src/Controllers/GitController.php`)
+
+## Интеграционные тесты (live)
+- API тесты создают репозитории с `uniqid()`, чтобы не было коллизий
+- `testChangePasswordSuccess` меняет пароль и сразу восстанавливает (используя новый пароль в запросе restore)
+- Git HTTP тесты: `clone`, `push`, `pull`, `info/refs` — каждый раз создают свежие репозитории через API
+- SSH тесты скипаются, если нет SSH сервера на порту 2222
+- После прогона интеграционных тестов `config.json` может быть изменён (пароли, новые юзеры). Для сброса: запустить `php /tmp/fix_config.php`
+
+## Тестовые хелперы
+| Функция | Назначение |
+|---------|-----------|
+| `initTestConfigFromArray($reposPath, $extra)` | Устанавливает Config через reflection + пишет конфиг-файл |
+| `createTestBareRepo($username, $repoName)` | `git init --bare + RepoConfig::save` |
+| `cleanupTestDir()` | `rm -rf tests/_temp/` |
+| `setPrivateProperty($obj, $prop, $value)` | Установка private/protected свойства (traverses hierarchy) |
+| `getPrivateProperty($obj, $prop)` | Чтение private/protected свойства |
+| `SendErrorException` | Исключение для мока sendError |
+
+# Тесты
+
+## Структура
+- `tests/Unit/` — модульные тесты (10 файлов, 170 тестов)
 - `tests/Integration/` — интеграционные тесты (3 файла)
 - `tests/bootstrap.php` — автозагрузка, хелперы (`initTestConfigFromArray`, `createTestBareRepo`, `cleanupTestDir`, `setPrivateProperty`, `getPrivateProperty`)
 - `tests.php` — скрипт-раннер с опциями (--unit, --integration, --port, --ssh, --no-server)
