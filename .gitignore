@@ -5,3 +5,5 @@ users
 routes.cache
 repo.cache
 keys.dump
+.phpunit.result.cache
+tests/_temp

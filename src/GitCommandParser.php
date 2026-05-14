@@ -82,7 +82,7 @@ class GitCommandParser
 		}
 
 		// Запрещаем .. и пути начинающиеся с точки
-		if (strpos($repo, '..') !== false || strpos($repo, './') === 0) {
+		if (strpos($repo, '..') !== false || $repo[0] === '.') {
 			error_log("Path traversal attempt: $repo");
 			return null;
 		}

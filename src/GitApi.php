@@ -321,6 +321,7 @@ class GitApi
 
 		if ($config->hasUser($targetUser)) {
 			$this->sendJson(['message' => "User '$targetUser' already has access"]);
+			return;
 		}
 
 		$config->addUser($targetUser);
@@ -633,7 +634,7 @@ HOOK;
 		$keys->save();
 	}
 
-	private function sendJson(array $data, int $code = 200): void
+	protected function sendJson(array $data, int $code = 200): void
 	{
 		http_response_code($code);
 		header('Content-Type: application/json');
